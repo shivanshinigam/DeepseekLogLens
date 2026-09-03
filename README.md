@@ -3,6 +3,8 @@
 > A modified DeepSeek with Sliding Window Attention, designed specifically for log file analysis.
 > Runs under 500 MB memory. 10× cheaper than GPT-4. Hosted on AWS Trainium.
 
+![LogLens AI Animated Demo](docs/demo.webp)
+
 ---
 
 ## What This Is and Why It Exists
