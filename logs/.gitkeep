@@ -1,0 +1,7 @@
+# This directory stores generated log files.
+# The actual .log files are excluded by .gitignore (they are generated at runtime).
+#
+# To generate the log file, run:
+#   python3 generate_logs.py
+#
+# This will create: logs/acmecorp_payment.log

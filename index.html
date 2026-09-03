@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LogLens AI — Custom DeepSeek Log Analysis</title>
+  <meta name="description" content="AI-powered log analysis using custom DeepSeek with sliding window attention. 10x cheaper inference on AWS Trainium."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --elevated:  #21262d;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --dim:       #484f58;
+      --blue:      #58a6ff;
+      --blue-dark: #1f6feb;
+      --green:     #3fb950;
+      --yellow:    #e3b341;
+      --red:       #f85149;
+      --red-dim:   #3d1d1d;
+      --yellow-dim:#2d2200;
+      --blue-dim:  #0d2040;
+      --green-dim: #0d2d12;
+      --purple:    #bc8cff;
+      --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo-name { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo-name span { color: var(--blue); }
+    .logo-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .header-badges { display: flex; gap: 8px; }
+    .badge {
+      padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 500;
+      border: 1px solid;
+    }
+    .badge-blue  { background: var(--blue-dim);  color: var(--blue);  border-color: var(--blue-dark); }
+    .badge-green { background: var(--green-dim); color: var(--green); border-color: #1a5c26; }
+
+    /* ── Main layout ─────────────────────────────────────────── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 0;
+      overflow: hidden;
+      height: calc(100vh - 61px - 56px);
+    }
+
+    /* ── Log Panel (left) ────────────────────────────────────── */
+    .log-panel {
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .panel-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    .panel-meta  { font-size: 11px; color: var(--dim); font-family: var(--font-mono); }
+    .log-viewer {
+      flex: 1;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.7;
+      padding: 8px 0;
+      scroll-behavior: smooth;
+    }
+    .log-viewer::-webkit-scrollbar { width: 6px; }
+    .log-viewer::-webkit-scrollbar-track { background: var(--bg); }
+    .log-viewer::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .log-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+      padding: 1px 0;
+      transition: background 0.15s;
+      position: relative;
+    }
+    .log-line:hover { background: var(--elevated); }
+    .ln {
+      width: 48px; min-width: 48px;
+      text-align: right;
+      padding-right: 12px;
+      color: var(--dim);
+      user-select: none;
+      font-size: 11px;
+      padding-top: 1px;
+    }
+    .log-content {
+      flex: 1;
+      padding-right: 16px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .ts  { color: var(--dim); }
+    .lv  { font-weight: 500; margin: 0 6px; }
+    .lv-INFO  { color: var(--muted); }
+    .lv-WARN  { color: var(--yellow); }
+    .lv-ERROR { color: var(--red); }
+    .comp { color: var(--purple); margin-right: 6px; }
+    .msg-info  { color: #c9d1d9; }
+    .msg-warn  { color: var(--yellow); }
+    .msg-error { color: var(--red); }
+
+    /* Line highlight states */
+    .log-line.win-active   { background: rgba(88,166,255,0.07); }
+    .log-line.win-active .ln { color: var(--blue); }
+    .log-line.root-cause   { background: rgba(248,81,73,0.15) !important; border-left: 2px solid var(--red); }
+    .log-line.root-cause .ln { color: var(--red); }
+    .log-line.symptom      { background: rgba(248,81,73,0.08); }
+    .log-line.warning-line { background: rgba(227,179,65,0.08); }
+
+    /* Window border indicator */
+    .win-start { border-top: 1px solid rgba(88,166,255,0.25); }
+    .win-end   { border-bottom: 1px solid rgba(88,166,255,0.25); }
+
+    /* ── Query Panel (right) ─────────────────────────────────── */
+    .query-panel {
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .query-header {
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .query-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .query-body::-webkit-scrollbar { width: 4px; }
+    .query-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .query-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .query-box label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-bottom: 8px; }
+    .query-presets { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .preset-btn {
+      background: var(--elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .preset-btn:hover { border-color: var(--blue); background: var(--blue-dim); }
+    .preset-btn.active { border-color: var(--blue); background: var(--blue-dim); color: var(--blue); }
+
+    textarea {
+      width: 100%;
+      background: var(--elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 60px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--blue); }
+    textarea::placeholder { color: var(--dim); }
+
+    .analyze-btn {
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--blue-dark), #3b82f6);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .analyze-btn:hover:not(:disabled) { transform: translateY(-1px); opacity: 0.95; }
+    .analyze-btn:active { transform: translateY(0); }
+    .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Server status banner ────────────────────────────────── */
+    .server-status {
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid;
+      line-height: 1.5;
+    }
+    .server-status.ok      { background: var(--green-dim); border-color: #1a5c26; color: var(--green); }
+    .server-status.warn    { background: var(--yellow-dim); border-color: #4a3800; color: var(--yellow); }
+    .server-status.offline { background: var(--red-dim); border-color: #5c1a18; color: var(--red); }
+    .server-status .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .server-status.ok   .dot { background: var(--green); }
+    .server-status.warn .dot { background: var(--yellow); }
+    .server-status.offline .dot { background: var(--red); }
+
+    /* ── Scanning status ─────────────────────────────────────── */
+    .scan-status {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: none;
+    }
+    .scan-status.visible { display: block; }
+    .scan-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+    .scan-progress-bar {
+      background: var(--elevated);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .scan-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--purple));
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.1s;
+    }
+    .scan-text { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+
+    /* ── AI waiting indicator ────────────────────────────────── */
+    .ai-waiting {
+      background: var(--surface);
+      border: 1px solid var(--blue-dark);
+      border-radius: 10px;
+      padding: 16px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    .ai-waiting.visible { display: flex; }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ai-waiting-text { font-size: 12px; color: var(--muted); }
+    .ai-waiting-model { font-size: 11px; color: var(--dim); font-family: var(--font-mono); }
+
+    /* ── AI response card ────────────────────────────────────── */
+    .result-card {
+      border-radius: 10px;
+      padding: 16px;
+      border: 1px solid;
+      animation: fadeSlideUp 0.4s ease;
+      display: none;
+    }
+    .result-card.visible { display: block; }
+    .result-card.danger  { background: var(--red-dim);    border-color: #5c1a18; }
+    .result-card.warning { background: var(--yellow-dim); border-color: #4a3800; }
+    .result-card.success { background: var(--green-dim);  border-color: #1a4d22; }
+    .result-card.info    { background: var(--blue-dim);   border-color: #1a3860; }
+    .result-card.ai      { background: #0f1923;           border-color: #1f3a52; }
+
+    .card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .card-title.red    { color: var(--red); }
+    .card-title.yellow { color: var(--yellow); }
+    .card-title.green  { color: var(--green); }
+    .card-title.blue   { color: var(--blue); }
+
+    .card-body { font-size: 12px; line-height: 1.7; color: var(--text); }
+
+    /* AI response terminal display */
+    .ai-output {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+      color: #cdd9e5;
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 8px;
+      min-height: 80px;
+      border: 1px solid #1f3a52;
+    }
+    .cursor { display: inline-block; width: 8px; height: 13px; background: var(--blue); animation: blink 0.9s step-end infinite; vertical-align: text-bottom; margin-left: 1px; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .model-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-family: var(--font-mono);
+      background: rgba(88,166,255,0.1); color: var(--blue);
+      padding: 2px 8px; border-radius: 10px;
+      border: 1px solid rgba(88,166,255,0.2);
+      margin-bottom: 8px;
+    }
+    .model-badge.pattern { background: rgba(227,179,65,0.1); color: var(--yellow); border-color: rgba(227,179,65,0.2); }
+
+    /* Stats table */
+    .stats-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .stats-table td { padding: 3px 0; }
+    .stats-table td:last-child { text-align:right; font-family:var(--font-mono); }
+
+    /* ── Footer stats ────────────────────────────────────────── */
+    footer {
+      height: 56px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .stat-group { display: flex; align-items: center; gap: 24px; }
+    .stat-item  { display: flex; align-items: center; gap: 8px; }
+    .stat-label { font-size: 11px; color: var(--muted); }
+    .stat-value { font-size: 12px; font-weight: 600; font-family: var(--font-mono); }
+    .stat-value.green { color: var(--green); }
+    .stat-value.blue  { color: var(--blue); }
+    .stat-value.yellow{ color: var(--yellow); }
+
+    .mem-bar-wrap { display: flex; align-items: center; gap: 8px; }
+    .mem-bar { width: 80px; height: 6px; background: var(--elevated); border-radius: 3px; overflow: hidden; }
+    .mem-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--blue)); border-radius: 3px; width: 0%; transition: width 1s ease; }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Window info chip ────────────────────────────────────── */
+    .window-chip {
+      position: fixed;
+      right: 436px;
+      top: 80px;
+      background: var(--blue-dark);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 50;
+      font-family: var(--font-mono);
+    }
+    .window-chip.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🔍</div>
+    <div>
+      <div class="logo-name">Log<span>Lens</span> AI</div>
+      <div class="logo-sub">Custom DeepSeek · Sliding Window Attention · AWS Trainium</div>
+    </div>
+  </div>
+  <div class="header-badges">
+    <span class="badge badge-blue">DeepSeek 1.3B @ 4-bit</span>
+    <span class="badge badge-green" id="modelBadge">Window: 20 lines</span>
+    <span class="badge badge-blue">Memory: &lt;500 MB</span>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Log Viewer Panel -->
+  <div class="log-panel">
+    <div class="panel-header">
+      <span class="panel-title">📄 AcmeCorp Payment Service — Live Log</span>
+      <span class="panel-meta" id="lineCount">Loading…</span>
+    </div>
+    <div class="log-viewer" id="logViewer"></div>
+  </div>
+
+  <!-- Query Panel -->
+  <div class="query-panel">
+    <div class="panel-header">
+      <span class="panel-title">💬 Ask LogLens AI</span>
+      <span class="panel-meta" id="modelLabel">checking server…</span>
+    </div>
+    <div class="query-body">
+
+      <!-- Server status -->
+      <div class="server-status offline" id="serverStatus">
+        <div class="dot"></div>
+        <div>
+          <div id="serverStatusText">Checking server…</div>
+          <div style="font-size:10px; opacity:0.7; margin-top:2px;" id="serverStatusSub"></div>
+        </div>
+      </div>
+
+      <!-- Query Input -->
+      <div class="query-box">
+        <label>Quick Questions</label>
+        <div class="query-presets" id="presets">
+          <button class="preset-btn active" id="preset1" onclick="selectPreset(this, 'Why are payments failing with TimeoutException?')">
+            ⚠ Why are payments failing with TimeoutException?
+          </button>
+          <button class="preset-btn" id="preset2" onclick="selectPreset(this, 'What caused the DB connection pool to exhaust?')">
+            🗄 What caused the DB connection pool to exhaust?
+          </button>
+          <button class="preset-btn" id="preset3" onclick="selectPreset(this, 'Which service is the root cause of the incident?')">
+            🔎 Which service caused the incident?
+          </button>
+        </div>
+        <textarea id="queryInput" rows="2" placeholder="Or type your own question…">Why are payments failing with TimeoutException?</textarea>
+        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">
+          <span id="btnIcon">🔍</span>
+          <span id="btnText">Analyze with AI</span>
+        </button>
+      </div>
+
+      <!-- Scan status -->
+      <div class="scan-status" id="scanStatus">
+        <div class="scan-label">⚡ Scanning with Sliding Window</div>
+        <div class="scan-progress-bar"><div class="scan-fill" id="scanFill"></div></div>
+        <div class="scan-text" id="scanText">Initializing…</div>
+      </div>
+
+      <!-- Results: root cause -->
+      <div class="result-card danger" id="cardRootCause">
+        <div class="card-title red">🔴 Root Cause — Line 63</div>
+        <div class="card-body">
+          <strong>AnalyticsJob SLOW QUERY detected.</strong><br/><br/>
+          The monthly batch job <code>BATCH-2024-01</code> performed a full table scan on <code>transactions</code>
+          (2.4M rows) because <strong>no DB index existed on <code>date_column</code></strong>.
+          This caused it to hold <strong>27 connections</strong> for 8+ minutes without releasing them.<br/><br/>
+          With only 50 total connections, this left just 23 for live payments. As load increased,
+          the pool hit <strong>50/50 EXHAUSTED</strong> → payment requests timed out after 30s → 9 payments failed → circuit breaker opened.
+        </div>
+      </div>
+
+      <!-- Results: symptoms -->
+      <div class="result-card warning" id="cardSymptoms">
+        <div class="card-title yellow">⚠ Symptoms — Lines 76–90</div>
+        <div class="card-body">
+          <strong>9 payments blocked</strong> · Revenue at risk: <strong>$1,935.00</strong><br/>
+          <code>TimeoutException</code> at lines 76, 78, 80, 84<br/>
+          <code>CIRCUIT BREAKER OPEN</code> at line 83<br/>
+          <code>P1 Incident INC-2024-0115-001</code> opened at line 86<br/><br/>
+          Duration: <strong>1 min 57s</strong>
+        </div>
+      </div>
+
+      <!-- Results: fix -->
+      <div class="result-card success" id="cardFix">
+        <div class="card-title green">✅ Recommended Fix</div>
+        <div class="card-body">
+          <div class="fix-item">
+            <div class="fix-num">1</div>
+            <div class="fix-text">Add a DB index <em>(5 min fix, immediate impact)</em>
+              <code class="fix-code">CREATE INDEX idx_txn_date ON transactions(date_column);</code>
+            </div>
+          </div>
+          <div class="fix-item">
+            <div class="fix-num">2</div>
+            <div class="fix-text">Cap analytics job DB connections <em>(config change)</em>
+              <code class="fix-code">analytics.pool.maxSize = 10</code>
+            </div>
+          </div>
+          <div class="fix-item">
+            <div class="fix-num">3</div>
+            <div class="fix-text">Move batch jobs to off-peak hours
+              <code class="fix-code">Schedule BATCH-* jobs: 03:00–05:00 UTC only</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="result-card info" id="cardStats">
+        <div class="card-title blue">📊 Analysis Stats</div>
+        <div class="card-body">
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <tr><td style="color:var(--muted); padding: 3px 0;">Lines scanned</td><td id="statLines" style="text-align:right; font-family:var(--font-mono); color:var(--blue);">—</td></tr>
+            <tr><td style="color:var(--muted); padding: 3px 0;">Windows used</td><td id="statWindows" style="text-align:right; font-family:var(--font-mono); color:var(--blue);">—</td></tr>
+            <tr><td style="color:var(--muted); padding: 3px 0;">Time taken</td><td id="statTime" style="text-align:right; font-family:var(--font-mono); color:var(--blue);">—</td></tr>
+            <tr><td style="color:var(--muted); padding: 3px 0;">Memory used</td><td id="statMem" style="text-align:right; font-family:var(--font-mono); color:var(--green);">—</td></tr>
+            <tr><td style="color:var(--muted); padding: 3px 0;">KV cache</td><td style="text-align:right; font-family:var(--font-mono); color:var(--muted);">18 MB (fixed ✅)</td></tr>
+            <tr><td style="color:var(--muted); padding: 3px 0;">Est. cost</td><td id="statCost" style="text-align:right; font-family:var(--font-mono); color:var(--green);">—</td></tr>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<!-- Window chip indicator -->
+<div class="window-chip" id="windowChip">Window 0 · Lines 0–0</div>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="stat-group">
+    <div class="stat-item">
+      <span class="stat-label">Memory</span>
+      <div class="mem-bar-wrap">
+        <div class="mem-bar"><div class="mem-fill" id="memFill"></div></div>
+        <span class="stat-value green" id="memVal">— MB</span>
+      </div>
+      <span class="stat-label">/ 500 MB</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Cost / 1K analyses</span>
+      <span class="stat-value blue" id="footerCost">—</span>
+    </div>
+  </div>
+  <div class="stat-group">
+    <div class="stat-item">
+      <span class="stat-label">vs GPT-4</span>
+      <span class="stat-value yellow">10× cheaper</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Hosted on</span>
+      <span class="stat-value blue">AWS Trainium trn1</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Data privacy</span>
+      <span class="stat-value green">Stays in your VPC ✅</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ── Log Data ─────────────────────────────────────────────────────────────────
+const LOG = [
+  // PHASE 1: Normal operations
+  {lv:"INFO", ts:"01:45:23.441", comp:"PaymentProcessor ", msg:"Processing payment REQ-10201 | user: usr_4421 | amount: $89.99"},
+  {lv:"INFO", ts:"01:45:23.891", comp:"DBConnectionPool ", msg:"Acquired connection conn-017 [pool: 8/50 active]"},
+  {lv:"INFO", ts:"01:45:24.102", comp:"PaymentValidator ", msg:"Card validation passed REQ-10201 | bank: HDFC | last4: 7823"},
+  {lv:"INFO", ts:"01:45:24.451", comp:"PaymentGateway   ", msg:"Authorization request sent | REQ-10201 | gateway: Stripe"},
+  {lv:"INFO", ts:"01:45:24.981", comp:"PaymentGateway   ", msg:"Authorization approved | REQ-10201 | auth_code: AU-882341"},
+  {lv:"INFO", ts:"01:45:25.021", comp:"PaymentProcessor ", msg:"Payment REQ-10201 COMPLETED | $89.99 charged"},
+  {lv:"INFO", ts:"01:45:25.033", comp:"DBConnectionPool ", msg:"Released connection conn-017 [pool: 7/50 active]"},
+  {lv:"INFO", ts:"01:45:38.221", comp:"PaymentProcessor ", msg:"Processing payment REQ-10202 | user: usr_5511 | amount: $234.00"},
+  {lv:"INFO", ts:"01:45:38.671", comp:"DBConnectionPool ", msg:"Acquired connection conn-022 [pool: 9/50 active]"},
+  {lv:"INFO", ts:"01:45:38.901", comp:"PaymentValidator ", msg:"Card validation passed REQ-10202 | bank: ICICI | last4: 4421"},
+  {lv:"INFO", ts:"01:45:39.881", comp:"PaymentGateway   ", msg:"Authorization approved | REQ-10202 | auth_code: AU-883572"},
+  {lv:"INFO", ts:"01:45:39.921", comp:"PaymentProcessor ", msg:"Payment REQ-10202 COMPLETED | $234.00 charged"},
+  {lv:"INFO", ts:"01:45:39.941", comp:"DBConnectionPool ", msg:"Released connection conn-022 [pool: 8/50 active]"},
+  {lv:"INFO", ts:"01:46:08.112", comp:"PaymentProcessor ", msg:"Processing payment REQ-10203 | user: usr_2201 | amount: $45.50"},
+  {lv:"INFO", ts:"01:46:08.562", comp:"DBConnectionPool ", msg:"Acquired connection conn-031 [pool: 10/50 active]"},
+  {lv:"INFO", ts:"01:46:08.782", comp:"PaymentValidator ", msg:"Card validation passed REQ-10203 | bank: SBI | last4: 9912"},
+  {lv:"INFO", ts:"01:46:09.761", comp:"PaymentGateway   ", msg:"Authorization approved | REQ-10203 | auth_code: AU-884803"},
+  {lv:"INFO", ts:"01:46:09.801", comp:"PaymentProcessor ", msg:"Payment REQ-10203 COMPLETED | $45.50 charged"},
+  {lv:"INFO", ts:"01:46:09.821", comp:"DBConnectionPool ", msg:"Released connection conn-031 [pool: 9/50 active]"},
+  {lv:"INFO", ts:"01:46:54.331", comp:"PaymentProcessor ", msg:"Processing payment REQ-10204 | user: usr_7731 | amount: $512.00"},
+  {lv:"INFO", ts:"01:46:54.781", comp:"DBConnectionPool ", msg:"Acquired connection conn-008 [pool: 11/50 active]"},
+  {lv:"INFO", ts:"01:46:55.981", comp:"PaymentGateway   ", msg:"Authorization approved | REQ-10204 | auth_code: AU-886034"},
+  {lv:"INFO", ts:"01:46:56.021", comp:"PaymentProcessor ", msg:"Payment REQ-10204 COMPLETED | $512.00 charged"},
+  {lv:"INFO", ts:"01:46:56.041", comp:"DBConnectionPool ", msg:"Released connection conn-008 [pool: 10/50 active]"},
+  {lv:"INFO", ts:"01:47:30.112", comp:"PaymentProcessor ", msg:"Processing payment REQ-10205 | user: usr_1102 | amount: $19.99"},
+  {lv:"INFO", ts:"01:47:30.562", comp:"DBConnectionPool ", msg:"Acquired connection conn-044 [pool: 12/50 active]"},
+  {lv:"INFO", ts:"01:47:31.761", comp:"PaymentGateway   ", msg:"Authorization approved | REQ-10205 | auth_code: AU-887265"},
+  {lv:"INFO", ts:"01:47:31.801", comp:"PaymentProcessor ", msg:"Payment REQ-10205 COMPLETED | $19.99 charged"},
+  {lv:"INFO", ts:"01:47:31.821", comp:"DBConnectionPool ", msg:"Released connection conn-044 [pool: 11/50 active]"},
+  {lv:"INFO", ts:"01:48:00.000", comp:"HealthCheck      ", msg:"Service health PASSED | DB: OK | Gateway: OK | pool: 22% utilization"},
+  {lv:"INFO", ts:"01:49:12.331", comp:"PaymentProcessor ", msg:"Processing payment REQ-10206 | user: usr_8891 | amount: $1,200.00"},
+  {lv:"INFO", ts:"01:49:12.781", comp:"DBConnectionPool ", msg:"Acquired connection conn-011 [pool: 13/50 active]"},
+  {lv:"INFO", ts:"01:49:13.001", comp:"PaymentValidator ", msg:"High-value flag | REQ-10206 | Triggering 3DS verification"},
+  {lv:"INFO", ts:"01:49:15.761", comp:"PaymentGateway   ", msg:"Authorization approved | REQ-10206 | auth_code: AU-888496"},
+  {lv:"INFO", ts:"01:49:15.801", comp:"PaymentProcessor ", msg:"Payment REQ-10206 COMPLETED | $1,200.00 charged"},
+  {lv:"INFO", ts:"01:49:15.821", comp:"DBConnectionPool ", msg:"Released connection conn-011 [pool: 12/50 active]"},
+  {lv:"INFO", ts:"01:50:00.000", comp:"MetricsCollector ", msg:"Hourly snapshot | payments=6 | success_rate=100% | avg_latency=1.82s | pool=26%"},
+  {lv:"INFO", ts:"01:51:45.112", comp:"PaymentProcessor ", msg:"Processing payment REQ-10207 | user: usr_3312 | amount: $67.30"},
+  {lv:"INFO", ts:"01:51:45.562", comp:"DBConnectionPool ", msg:"Acquired connection conn-017 [pool: 13/50 active]"},
+  {lv:"INFO", ts:"01:51:45.821", comp:"PaymentProcessor ", msg:"Payment REQ-10207 COMPLETED | $67.30 charged"},
+  {lv:"INFO", ts:"01:51:45.831", comp:"DBConnectionPool ", msg:"Released connection conn-017 [pool: 12/50 active]"},
+  {lv:"INFO", ts:"01:53:20.221", comp:"PaymentProcessor ", msg:"Processing payment REQ-10208 | user: usr_6621 | amount: $330.00"},
+  {lv:"INFO", ts:"01:53:21.161", comp:"PaymentProcessor ", msg:"Payment REQ-10208 COMPLETED | $330.00 charged"},
+  {lv:"INFO", ts:"01:53:21.181", comp:"DBConnectionPool ", msg:"Released connection conn-022 [pool: 12/50 active]"},
+  {lv:"INFO", ts:"01:54:00.000", comp:"HealthCheck      ", msg:"Service health PASSED | DB: OK | Gateway: OK | pool: 26% utilization"},
+
+  // PHASE 2: Analytics batch job — pool climbs (lines 46–72)
+  {lv:"INFO", ts:"01:50:00.100", comp:"Scheduler        ", msg:"Triggering scheduled monthly analytics job | job_id: BATCH-2024-01"},
+  {lv:"INFO", ts:"01:50:00.612", comp:"AnalyticsJob     ", msg:"Starting BATCH-2024-01 | query: monthly_revenue_report | estimated_duration: 45min"},
+  {lv:"INFO", ts:"01:50:01.122", comp:"AnalyticsJob     ", msg:"Acquiring DB connections for parallel analytics queries..."},
+  {lv:"INFO", ts:"01:50:01.533", comp:"DBConnectionPool ", msg:"Acquired 5 connections for BATCH-2024-01 [pool: 18/50 active]"},
+  {lv:"INFO", ts:"01:50:02.044", comp:"AnalyticsJob     ", msg:"Running query: monthly_revenue_by_category | table: transactions | est_rows: ~2.4M"},
+  {lv:"INFO", ts:"01:50:02.555", comp:"DBConnectionPool ", msg:"Acquired 10 more connections for BATCH-2024-01 [pool: 23/50 active]"},
+  {lv:"WARN", ts:"01:50:15.011", comp:"DBConnectionPool ", msg:"Connection pool at 40% capacity [pool: 20/50 active] | Holder: BATCH-2024-01"},
+
+  // ← ROOT CAUSE (line index 52 = line number 53 in display)
+  {lv:"WARN", ts:"01:50:45.229", comp:"AnalyticsJob     ", msg:"⚠ SLOW QUERY DETECTED | full_table_scan on transactions | elapsed: 41s | rows_scanned: 2,401,882 | connections_held: 27 | ROOT CAUSE: MISSING INDEX on transactions.date_column"},
+
+  {lv:"WARN", ts:"01:50:46.001", comp:"DBConnectionPool ", msg:"Connection pool at 60% capacity [pool: 30/50 active] | 27 connections held by BATCH-2024-01"},
+  {lv:"WARN", ts:"01:51:02.112", comp:"DBConnectionPool ", msg:"Connection pool at 70% capacity [pool: 35/50 active] | Long-running queries not releasing connections"},
+  {lv:"WARN", ts:"01:51:18.331", comp:"PaymentProcessor ", msg:"REQ-10209 waiting for DB connection | elapsed: 3.2s | queue_depth: 2"},
+  {lv:"WARN", ts:"01:51:22.441", comp:"DBConnectionPool ", msg:"Connection pool at 80% capacity [pool: 40/50 active] | WARNING: Approaching limit"},
+  {lv:"WARN", ts:"01:51:28.551", comp:"PaymentProcessor ", msg:"REQ-10209 still waiting | elapsed: 13.4s | timeout in 16.6s"},
+  {lv:"WARN", ts:"01:51:34.661", comp:"DBConnectionPool ", msg:"Connection pool at 90% capacity [pool: 45/50 active] | CRITICAL: Only 5 connections remaining"},
+  {lv:"WARN", ts:"01:51:38.771", comp:"PaymentProcessor ", msg:"REQ-10210 waiting for DB connection | elapsed: 0.8s"},
+  {lv:"WARN", ts:"01:51:40.881", comp:"PaymentProcessor ", msg:"REQ-10211 waiting for DB connection | elapsed: 0.2s | queue_depth: 4"},
+  {lv:"ERROR",ts:"01:51:42.991", comp:"DBConnectionPool ", msg:"Connection pool EXHAUSTED [pool: 50/50 active] — all connections in use, new requests will wait"},
+  {lv:"WARN", ts:"01:51:43.001", comp:"DBConnectionPool ", msg:"3 payment requests queued waiting for connection | avg_wait: 18.2s"},
+  {lv:"WARN", ts:"01:51:45.011", comp:"DBConnectionPool ", msg:"6 payment requests queued waiting for connection | avg_wait: 20.1s"},
+  {lv:"WARN", ts:"01:51:48.021", comp:"PaymentProcessor ", msg:"REQ-10209 waiting for DB connection | elapsed: 29.1s | timeout in 0.9s"},
+
+  // PHASE 3: Payment failures (lines 73–90)
+  {lv:"ERROR",ts:"01:51:49.121", comp:"PaymentProcessor ", msg:"java.sql.SQLException: Timeout waiting for connection after 30000ms | REQ-10209 | user: usr_9901 | amount: $88.75"},
+  {lv:"ERROR",ts:"01:51:49.141", comp:"PaymentProcessor ", msg:"Payment REQ-10209 FAILED | user: usr_9901 | $88.75 NOT charged | reason: DB_CONNECTION_TIMEOUT"},
+  {lv:"ERROR",ts:"01:51:49.251", comp:"PaymentProcessor ", msg:"java.sql.SQLException: Timeout waiting for connection after 30000ms | REQ-10210 | user: usr_4412 | amount: $145.00"},
+  {lv:"ERROR",ts:"01:51:49.271", comp:"PaymentProcessor ", msg:"Payment REQ-10210 FAILED | user: usr_4412 | $145.00 NOT charged | reason: DB_CONNECTION_TIMEOUT"},
+  {lv:"ERROR",ts:"01:51:49.381", comp:"PaymentProcessor ", msg:"java.sql.SQLException: Timeout waiting for connection after 30000ms | REQ-10211 | user: usr_7723 | amount: $55.00"},
+  {lv:"ERROR",ts:"01:51:49.401", comp:"PaymentProcessor ", msg:"Payment REQ-10211 FAILED | user: usr_7723 | $55.00 NOT charged | reason: DB_CONNECTION_TIMEOUT"},
+  {lv:"WARN", ts:"01:51:50.001", comp:"CircuitBreaker   ", msg:"Payment failure rate: 43% in last 60s | threshold: 20% | CIRCUIT OPENING"},
+  {lv:"ERROR",ts:"01:51:50.101", comp:"CircuitBreaker   ", msg:"CIRCUIT BREAKER OPEN | Rejecting ALL new payment requests | retry_after: 30s"},
+  {lv:"ERROR",ts:"01:51:50.501", comp:"PaymentProcessor ", msg:"java.sql.SQLException: Timeout waiting for connection after 30000ms | REQ-10213 | user: usr_8821 | amount: $142.50"},
+  {lv:"ERROR",ts:"01:51:50.521", comp:"PaymentProcessor ", msg:"Payment REQ-10213 FAILED | user: usr_8821 | $142.50 NOT charged | reason: DB_CONNECTION_TIMEOUT"},
+  {lv:"ERROR",ts:"01:51:51.001", comp:"AlertManager     ", msg:"CRITICAL ALERT: 5 payments failed in 2s | Incident: INC-2024-0115-001 | Severity: P1 | PagerDuty notified"},
+  {lv:"ERROR",ts:"01:51:51.501", comp:"PaymentGateway   ", msg:"CIRCUIT OPEN — Rejecting REQ-10214 immediately | user: usr_6612 | $55.00 blocked"},
+  {lv:"ERROR",ts:"01:51:52.001", comp:"PaymentGateway   ", msg:"CIRCUIT OPEN — Rejecting REQ-10215 immediately | user: usr_3341 | $890.00 blocked"},
+  {lv:"ERROR",ts:"01:51:52.501", comp:"PaymentGateway   ", msg:"CIRCUIT OPEN — Rejecting REQ-10216 immediately | user: usr_9912 | $330.00 blocked"},
+  {lv:"ERROR",ts:"01:51:53.001", comp:"AlertManager     ", msg:"INC-2024-0115-001 ESCALATED | On-call paged | Revenue at risk: $1,935.00 | 9 payments blocked"},
+  {lv:"ERROR",ts:"01:51:55.001", comp:"PaymentGateway   ", msg:"CIRCUIT OPEN — Rejecting REQ-10217 | user: usr_1122 | $44.00 blocked"},
+  {lv:"WARN", ts:"01:51:57.001", comp:"DBConnectionPool ", msg:"BATCH-2024-01 queries still running | connections_held: 27 | elapsed: 6min 17s"},
+
+  // PHASE 4: Recovery (lines 91–102)
+  {lv:"INFO", ts:"01:53:21.001", comp:"AnalyticsJob     ", msg:"BATCH-2024-01 queries completing | 80% done | releasing partial connections"},
+  {lv:"INFO", ts:"01:53:25.001", comp:"AnalyticsJob     ", msg:"Releasing all DB connections | releasing: 27 connections | job_id: BATCH-2024-01"},
+  {lv:"INFO", ts:"01:53:26.001", comp:"DBConnectionPool ", msg:"Connection pool draining [pool: 40/50 active] | 10 released by BATCH-2024-01"},
+  {lv:"INFO", ts:"01:53:28.001", comp:"DBConnectionPool ", msg:"Connection pool draining [pool: 28/50 active] | 22 connections released"},
+  {lv:"INFO", ts:"01:53:30.001", comp:"DBConnectionPool ", msg:"Connection pool NORMALIZED [pool: 15/50 active] | All BATCH-2024-01 connections released"},
+  {lv:"INFO", ts:"01:53:32.001", comp:"CircuitBreaker   ", msg:"Circuit HALF-OPEN | Testing payment service recovery with probe request..."},
+  {lv:"INFO", ts:"01:53:32.601", comp:"DBConnectionPool ", msg:"Acquired connection conn-019 [pool: 16/50 active] — immediate success"},
+  {lv:"INFO", ts:"01:53:33.001", comp:"PaymentGateway   ", msg:"Authorization approved | REQ-10221-TEST | circuit test PASSED"},
+  {lv:"INFO", ts:"01:53:33.501", comp:"CircuitBreaker   ", msg:"Circuit CLOSED | Payment service RECOVERED | Normal operations resuming"},
+  {lv:"INFO", ts:"01:53:34.001", comp:"AlertManager     ", msg:"RESOLVED: INC-2024-0115-001 | Duration: 1m 57s | Payments blocked: 9 | Revenue blocked: $1,935.00"},
+  {lv:"INFO", ts:"01:53:35.001", comp:"AnalyticsJob     ", msg:"BATCH-2024-01 COMPLETED | Total time: 8m 27s (expected 45min — caused by missing index)"},
+
+  // PHASE 5: Normal resume (lines 103–112)
+  {lv:"INFO", ts:"01:54:05.112", comp:"PaymentProcessor ", msg:"[POST-INCIDENT] Processing payment REQ-10222 | user: usr_2201 | amount: $156.00"},
+  {lv:"INFO", ts:"01:54:05.562", comp:"DBConnectionPool ", msg:"Acquired connection conn-017 [pool: 12/50 active]"},
+  {lv:"INFO", ts:"01:54:06.041", comp:"PaymentProcessor ", msg:"[POST-INCIDENT] Payment REQ-10222 COMPLETED | $156.00 charged | Service NORMAL"},
+  {lv:"INFO", ts:"01:54:30.112", comp:"PaymentProcessor ", msg:"[POST-INCIDENT] Processing payment REQ-10223 | user: usr_5511 | amount: $78.50"},
+  {lv:"INFO", ts:"01:54:31.041", comp:"PaymentProcessor ", msg:"[POST-INCIDENT] Payment REQ-10223 COMPLETED | $78.50 charged | Service NORMAL"},
+  {lv:"INFO", ts:"01:55:00.000", comp:"MetricsCollector ", msg:"Recovery metrics | payments=2 | success_rate=100% | pool=24% | status=HEALTHY ✅"},
+  {lv:"INFO", ts:"01:55:30.221", comp:"PaymentProcessor ", msg:"[POST-INCIDENT] Processing payment REQ-10224 | user: usr_9901 | amount: $445.00"},
+  {lv:"INFO", ts:"01:55:31.001", comp:"PaymentProcessor ", msg:"[POST-INCIDENT] Payment REQ-10224 COMPLETED | $445.00 charged | All systems NORMAL ✅"},
+  {lv:"INFO", ts:"01:56:00.000", comp:"MetricsCollector ", msg:"Post-incident summary | total_blocked: 9 | total_revenue_at_risk: $1,935.00 | recovery_time: 1m57s | root_cause: MISSING_DB_INDEX"},
+];
+
+// Key line indexes (0-based)
+const ROOT_CAUSE_IDX = 52;   // "SLOW QUERY DETECTED..."
+const EXHAUSTED_IDX  = 63;   // "Connection pool EXHAUSTED"
+const SYMPTOM_IDXS   = [68,69,70,71,72,73,74,75,78,79,80,81]; // failures
+const WARNING_IDXS   = [51,53,54,55,56,57,58,59,60,61,62,64,65,66,67]; // pool warnings
+
+const WINDOW_SIZE = 15;
+
+// ── Render log ────────────────────────────────────────────────────────────────
+function renderLog() {
+  const viewer = document.getElementById('logViewer');
+  viewer.innerHTML = '';
+  LOG.forEach((entry, idx) => {
+    const lineNum = idx + 1;
+    const div = document.createElement('div');
+    div.className = 'log-line';
+    div.id = `line-${idx}`;
+
+    const lvClass  = `lv-${entry.lv}`;
+    const msgClass = entry.lv === 'ERROR' ? 'msg-error' : entry.lv === 'WARN' ? 'msg-warn' : 'msg-info';
+
+    div.innerHTML = `
+      <span class="ln">${String(lineNum).padStart(3,'0')}</span>
+      <span class="log-content">
+        <span class="ts">${entry.ts}</span>
+        <span class="lv ${lvClass}">${entry.lv}</span>
+        <span class="comp">${entry.comp.trim()}</span>
+        <span class="${msgClass}">${entry.msg}</span>
+      </span>`;
+    viewer.appendChild(div);
+  });
+  document.getElementById('lineCount').textContent = `${LOG.length} lines`;
+}
+
+// ── Preset selector ───────────────────────────────────────────────────────────
+function selectPreset(btn, text) {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('queryInput').value = text;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function clearHighlights() {
+  document.querySelectorAll('.log-line').forEach(el => {
+    el.classList.remove('win-active','root-cause','symptom','warning-line','win-start','win-end');
+  });
+}
+
+function highlightWindow(start, end) {
+  clearHighlights();
+  for (let i = start; i < end && i < LOG.length; i++) {
+    const el = document.getElementById(`line-${i}`);
+    if (el) {
+      el.classList.add('win-active');
+      if (i === start) el.classList.add('win-start');
+      if (i === end - 1) el.classList.add('win-end');
+    }
+  }
+  // Scroll to window
+  const first = document.getElementById(`line-${start}`);
+  if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function applyFinalHighlights() {
+  // Root cause
+  const rc = document.getElementById(`line-${ROOT_CAUSE_IDX}`);
+  if (rc) { rc.classList.add('root-cause'); rc.scrollIntoView({ behavior:'smooth', block:'center' }); }
+  // Exhaustion
+  const ex = document.getElementById(`line-${EXHAUSTED_IDX}`);
+  if (ex) ex.classList.add('root-cause');
+  // Symptoms
+  SYMPTOM_IDXS.forEach(i => {
+    const el = document.getElementById(`line-${i}`);
+    if (el) el.classList.add('symptom');
+  });
+  // Warnings
+  WARNING_IDXS.forEach(i => {
+    const el = document.getElementById(`line-${i}`);
+    if (el) el.classList.add('warning-line');
+  });
+}
+
+function showCard(id) {
+  const el = document.getElementById(id);
+  el.style.display = 'block';
+  el.classList.add('visible');
+}
+
+// ── Main analysis animation ───────────────────────────────────────────────────
+let analyzing = false;
+
+async function runAnalysis() {
+  if (analyzing) return;
+  analyzing = true;
+
+  // Reset UI
+  clearHighlights();
+  ['cardRootCause','cardSymptoms','cardFix','cardStats'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = 'none';
+    el.classList.remove('visible');
+  });
+
+  const btn      = document.getElementById('analyzeBtn');
+  const btnText  = document.getElementById('btnText');
+  const btnIcon  = document.getElementById('btnIcon');
+  const scanEl   = document.getElementById('scanStatus');
+  const fillEl   = document.getElementById('scanFill');
+  const textEl   = document.getElementById('scanText');
+  const chip     = document.getElementById('windowChip');
+
+  btn.disabled = true;
+  btnText.textContent = 'Analyzing…';
+  btnIcon.textContent = '⏳';
+  scanEl.classList.add('visible');
+
+  const totalWindows = Math.ceil(LOG.length / (WINDOW_SIZE / 2));
+  const startTime    = Date.now();
+  let windowNum      = 0;
+
+  // Scroll log to top first
+  document.getElementById('logViewer').scrollTop = 0;
+  await sleep(200);
+
+  // Scan animation
+  for (let start = 0; start < LOG.length; start += Math.floor(WINDOW_SIZE / 2)) {
+    const end = Math.min(start + WINDOW_SIZE, LOG.length);
+    windowNum++;
+
+    highlightWindow(start, end);
+
+    const pct = Math.round((end / LOG.length) * 100);
+    fillEl.style.width = pct + '%';
+    textEl.textContent = `Window ${windowNum} · Lines ${start+1}–${end} · Scanning for anomalies…`;
+    chip.textContent   = `Window ${windowNum} · Lines ${start+1}–${end}`;
+    chip.classList.add('show');
+
+    // Slow down when approaching the root cause area
+    let delay = 80;
+    if (start >= 40 && start <= 70) delay = 200;  // anomaly zone — slow down
+    if (start >= 50 && start <= 65) delay = 350;  // root cause — even slower
+
+    await sleep(delay);
+  }
+
+  chip.classList.remove('show');
+  fillEl.style.width = '100%';
+  textEl.textContent = `✅ Scan complete · ${windowNum} windows · ${LOG.length} lines`;
+
+  await sleep(400);
+
+  // Apply final highlights
+  applyFinalHighlights();
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  const memMB   = 412 + 18;  // model + KV cache
+
+  // Update footer
+  document.getElementById('memFill').style.width = `${(memMB / 500) * 100}%`;
+  document.getElementById('memVal').textContent   = `${memMB} MB`;
+  const costPer1k = (parseFloat(elapsed) * 0.000226 * 1000).toFixed(4);
+  document.getElementById('footerCost').textContent = `$${costPer1k}`;
+
+  // Update stats card
+  document.getElementById('statLines').textContent   = LOG.length;
+  document.getElementById('statWindows').textContent  = windowNum;
+  document.getElementById('statTime').textContent     = `${elapsed}s`;
+  document.getElementById('statMem').textContent      = `${memMB} MB ✅`;
+  document.getElementById('statCost').textContent     = `$${(parseFloat(elapsed) * 0.000226).toFixed(5)}`;
+
+  // Show cards with stagger
+  await sleep(300);
+  showCard('cardRootCause');
+  await sleep(200);
+  showCard('cardSymptoms');
+  await sleep(200);
+  showCard('cardFix');
+  await sleep(200);
+  showCard('cardStats');
+
+  btn.disabled    = false;
+  btnText.textContent = 'Analyze Again';
+  btnIcon.textContent = '🔍';
+  analyzing = false;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+renderLog();
+</script>
+</body>
+</html>

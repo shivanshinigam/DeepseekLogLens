@@ -1,0 +1,31 @@
+# LogLens AI — Python Dependencies
+# Install with: pip3 install -r requirements.txt
+
+# ── Core server ───────────────────────────────────────────────────────────────
+fastapi>=0.104.0       # Web framework for the inference API
+uvicorn[standard]>=0.24.0  # ASGI server (runs FastAPI)
+requests>=2.31.0       # HTTP client (to call Ollama)
+pydantic>=2.0.0        # Data validation (used by FastAPI)
+
+# ── Attention module ──────────────────────────────────────────────────────────
+torch>=2.1.0           # Core deep learning (runs log_attention.py)
+
+# ── Optional: real LLM via local Ollama ──────────────────────────────────────
+# No pip package needed — install Ollama separately:
+#   Mac:   brew install ollama
+#          ollama pull llama3.2:1b
+#   Linux: curl -fsSL https://ollama.ai/install.sh | sh
+#          ollama pull llama3.2:1b
+
+# ── Optional: DeepSeek full stack (needed for Section 3 of README) ────────────
+# transformers>=4.37.0
+# accelerate>=0.25.0
+# bitsandbytes>=0.41.0   # 4-bit quantization (CUDA only)
+
+# ── Optional: FlashAttention (faster than default attention kernel) ───────────
+# Install separately — does NOT work via pip on all platforms:
+#   pip install flash-attn --no-build-isolation
+
+# ── Optional: AWS Trainium (needed for Section 4 of README) ──────────────────
+# torch-neuronx         # Install via: pip install torch-neuronx (Trainium only)
+# neuronx-cc            # Trainium compiler — only runs on AWS trn1 instances
