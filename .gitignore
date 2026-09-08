@@ -28,12 +28,13 @@ Thumbs.db
 # Logs (keep structure, not the generated files)
 logs/*.log
 
-# Model files (too large for git)
+# Model weights (too large for git — upload to HuggingFace instead)
 *.pt
 *.bin
 *.safetensors
 deepseek-log-1.3b/
 deepseek_log_compiled.pt
+my_custom_mini_deepseek/
 
 # Server runtime
 *.pid
