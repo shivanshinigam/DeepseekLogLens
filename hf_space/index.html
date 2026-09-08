@@ -5,163 +5,453 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LogLens AI — Custom DeepSeek Log Analyzer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg:       #0b0f1a;
-      --panel:    #111827;
-      --border:   #1e293b;
-      --accent:   #3b82f6;
-      --accent2:  #6366f1;
-      --green:    #10b981;
-      --red:      #ef4444;
-      --yellow:   #f59e0b;
-      --text:     #e2e8f0;
-      --muted:    #64748b;
-      --mono:     'JetBrains Mono', monospace;
+      --bg: #030712;
+      --bg-panel: rgba(17, 24, 39, 0.7);
+      --border: rgba(55, 65, 81, 0.5);
+      --accent-1: #3b82f6; /* Blue */
+      --accent-2: #8b5cf6; /* Purple */
+      --accent-3: #10b981; /* Emerald */
+      --accent-glow: rgba(59, 130, 246, 0.5);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --font-sans: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
     }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    
+    body { 
+      font-family: var(--font-sans); 
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08) 0%, transparent 50%);
+      color: var(--text-main); 
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Glassmorphism Utils ── */
+    .glass {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    }
 
     /* ── Header ── */
     header {
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-      border-bottom: 1px solid var(--border);
-      padding: 18px 32px;
-      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 40px;
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(3, 7, 18, 0.8);
+      backdrop-filter: blur(20px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
-    .logo { display: flex; align-items: center; gap: 10px; }
-    .logo-icon { font-size: 24px; }
-    .logo-text { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
-    .logo-sub  { font-size: 12px; color: var(--muted); margin-top: 1px; }
-    .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    
+    .logo { display: flex; align-items: center; gap: 14px; }
+    .logo-icon { 
+      font-size: 28px; 
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 8px var(--accent-glow));
+    }
+    .logo-text { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo-sub  { font-size: 13px; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+    
+    .badges { display: flex; gap: 10px; flex-wrap: wrap; }
     .badge {
-      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
-      border: 1px solid; letter-spacing: 0.3px;
+      padding: 6px 14px; 
+      border-radius: 30px; 
+      font-size: 12px; 
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.2s;
     }
-    .badge-blue   { color: #93c5fd; border-color: #1d4ed8; background: #1e3a8a22; }
-    .badge-green  { color: #6ee7b7; border-color: #059669; background: #06412222; }
-    .badge-purple { color: #c4b5fd; border-color: #7c3aed; background: #4c1d9522; }
+    .badge:hover { transform: translateY(-2px); }
+    .badge-blue   { color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 10px rgba(59, 130, 246, 0.1); }
+    .badge-green  { color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.1); box-shadow: 0 0 10px rgba(16, 185, 129, 0.1); }
+    .badge-purple { color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3); background: rgba(139, 92, 246, 0.1); box-shadow: 0 0 10px rgba(139, 92, 246, 0.1); }
 
     /* ── Main layout ── */
-    main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
-    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+    main { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 30px; 
+      padding: 40px; 
+      max-width: 1600px; 
+      margin: 0 auto; 
+    }
+    @media (max-width: 1024px) { main { grid-template-columns: 1fr; padding: 20px; } }
 
     /* ── Panels ── */
-    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-    .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
-    .panel-title { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; color: var(--muted); }
-    .panel-body { padding: 20px; }
+    .panel { 
+      border-radius: 16px; 
+      overflow: hidden; 
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .panel:hover {
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
+    }
+    .panel-header { 
+      padding: 16px 24px; 
+      border-bottom: 1px solid rgba(255,255,255,0.05); 
+      display: flex; 
+      align-items: center; 
+      gap: 10px;
+      background: rgba(255,255,255,0.02);
+    }
+    .panel-title { 
+      font-size: 14px; 
+      font-weight: 600; 
+      letter-spacing: 1px; 
+      text-transform: uppercase; 
+      color: #cbd5e1; 
+    }
+    .panel-body { padding: 24px; }
 
     /* ── Log input ── */
     textarea#logInput {
-      width: 100%; height: 220px; resize: vertical;
-      background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
-      color: var(--text); font-family: var(--mono); font-size: 12px; line-height: 1.6;
-      padding: 12px 14px; outline: none;
-      transition: border-color 0.2s;
+      width: 100%; 
+      height: 260px; 
+      resize: vertical;
+      background: rgba(0, 0, 0, 0.3); 
+      border: 1px solid var(--border); 
+      border-radius: 12px;
+      color: #e2e8f0; 
+      font-family: var(--font-mono); 
+      font-size: 13px; 
+      line-height: 1.7;
+      padding: 16px; 
+      outline: none;
+      transition: all 0.3s ease;
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
     }
-    textarea#logInput:focus { border-color: var(--accent); }
+    textarea#logInput:focus { 
+      border-color: var(--accent-1); 
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.2), 0 0 15px rgba(59, 130, 246, 0.2);
+    }
 
     input#questionInput {
-      width: 100%; padding: 10px 14px; margin-top: 12px;
-      background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
-      color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
-      outline: none; transition: border-color 0.2s;
+      width: 100%; 
+      padding: 14px 16px; 
+      margin-top: 16px;
+      background: rgba(0, 0, 0, 0.3); 
+      border: 1px solid var(--border); 
+      border-radius: 12px;
+      color: var(--text-main); 
+      font-family: var(--font-sans); 
+      font-size: 15px;
+      outline: none; 
+      transition: all 0.3s;
     }
-    input#questionInput:focus { border-color: var(--accent); }
+    input#questionInput:focus { 
+      border-color: var(--accent-2); 
+      box-shadow: 0 0 15px rgba(139, 92, 246, 0.2);
+    }
 
     /* ── Samples ── */
-    .sample-btns { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-    .sample-btn {
-      padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
-      border: 1px solid var(--border); background: #1e293b; color: var(--muted);
-      transition: all 0.2s;
+    .sample-container {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255,255,255,0.05);
     }
-    .sample-btn:hover { border-color: var(--accent); color: var(--accent); background: #1e3a8a22; }
+    .sample-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+    .sample-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    .sample-btn {
+      padding: 8px 16px; 
+      font-size: 13px; 
+      font-weight: 600; 
+      border-radius: 8px; 
+      cursor: pointer;
+      border: 1px solid var(--border); 
+      background: rgba(255,255,255,0.03); 
+      color: #cbd5e1;
+      font-family: var(--font-sans);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sample-btn:hover { 
+      border-color: var(--accent-1); 
+      color: white; 
+      background: rgba(59, 130, 246, 0.15); 
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+    }
 
     /* ── Analyze button ── */
     #analyzeBtn {
-      width: 100%; margin-top: 16px; padding: 13px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none; border-radius: 8px; color: white;
-      font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
-      cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.2px;
+      width: 100%; 
+      margin-top: 24px; 
+      padding: 16px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      border: none; 
+      border-radius: 12px; 
+      color: white;
+      font-family: var(--font-sans); 
+      font-size: 16px; 
+      font-weight: 700;
+      cursor: pointer; 
+      transition: all 0.3s; 
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+      position: relative;
+      overflow: hidden;
     }
-    #analyzeBtn:hover { opacity: 0.9; }
-    #analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #analyzeBtn::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s;
+    }
+    #analyzeBtn:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(99, 102, 241, 0.5); 
+    }
+    #analyzeBtn:hover::before { left: 100%; }
+    #analyzeBtn:disabled { 
+      background: #334155; 
+      box-shadow: none; 
+      color: #94a3b8; 
+      cursor: not-allowed; 
+      transform: none; 
+    }
 
     /* ── Scan animation ── */
-    #scanViz { height: 130px; background: #0d1117; border-radius: 8px; overflow: hidden; position: relative; margin-bottom: 16px; }
-    .scan-line-row {
-      display: flex; align-items: center; gap: 8px; padding: 1px 10px;
-      font-family: var(--mono); font-size: 10px; height: 16px;
-      transition: background 0.15s;
+    #scanViz { 
+      height: 180px; 
+      background: rgba(0,0,0,0.4); 
+      border-radius: 12px; 
+      overflow: hidden; 
+      position: relative; 
+      margin-bottom: 20px; 
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
     }
-    .scan-line-row.window { background: #1e3a8a33; }
-    .scan-line-row.anomaly { background: #7f1d1d44; }
-    .line-no { color: var(--muted); width: 28px; text-align: right; flex-shrink: 0; }
+    .scan-line-row {
+      display: flex; align-items: center; gap: 12px; padding: 2px 14px;
+      font-family: var(--font-mono); font-size: 11px; height: 20px;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .scan-line-row.window { 
+      background: rgba(59, 130, 246, 0.15); 
+      border-left: 2px solid var(--accent-1);
+    }
+    .scan-line-row.anomaly { 
+      background: rgba(239, 68, 68, 0.15); 
+      border-left: 2px solid var(--danger);
+      animation: pulse-bg 2s infinite;
+    }
+    @keyframes pulse-bg {
+      0% { background: rgba(239, 68, 68, 0.15); }
+      50% { background: rgba(239, 68, 68, 0.25); }
+      100% { background: rgba(239, 68, 68, 0.15); }
+    }
+    .line-no { color: #475569; width: 32px; text-align: right; flex-shrink: 0; font-weight: 600; }
     .line-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; flex: 1; }
-    .line-txt.err { color: #fca5a5; }
+    .line-txt.err { color: #fca5a5; text-shadow: 0 0 5px rgba(252,165,165,0.3); }
     .line-txt.warn { color: #fcd34d; }
-    .line-txt.rc { color: #86efac; font-weight: 600; }
+    .line-txt.rc { color: #86efac; font-weight: 700; text-shadow: 0 0 5px rgba(134,239,172,0.3); }
 
     /* ── Scan bar ── */
-    #scanBar { height: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0%; transition: width 0.1s; margin-bottom: 12px; border-radius: 2px; }
+    .scan-progress-container {
+      height: 6px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 3px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    #scanBar { 
+      height: 100%; 
+      background: linear-gradient(90deg, var(--accent-1), var(--accent-2)); 
+      width: 0%; 
+      transition: width 0.15s ease-out; 
+      border-radius: 3px;
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+    }
 
     /* ── Results ── */
-    .result-section { margin-bottom: 16px; }
-    .result-label { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-    .result-box {
-      background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
-      padding: 12px 14px; font-size: 13px; line-height: 1.6;
+    .result-section { margin-bottom: 20px; animation: slideUp 0.4s ease-out forwards; opacity: 0; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .result-section:nth-child(1) { animation-delay: 0.1s; }
+    .result-section:nth-child(2) { animation-delay: 0.2s; }
+    .result-section:nth-child(3) { animation-delay: 0.3s; }
+    
+    .result-label { 
+      font-size: 12px; 
+      font-weight: 700; 
+      letter-spacing: 1px; 
+      text-transform: uppercase; 
+      color: var(--text-muted); 
+      margin-bottom: 10px; 
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    .result-box.red   { border-left: 3px solid var(--red);    background: #7f1d1d11; }
-    .result-box.green { border-left: 3px solid var(--green);  background: #06412211; }
-    .result-box.amber { border-left: 3px solid var(--yellow); background: #78350f11; }
-    .result-box code  { font-family: var(--mono); font-size: 11px; color: #93c5fd; background: #1e293b; padding: 1px 5px; border-radius: 3px; }
+    .result-box {
+      background: rgba(0,0,0,0.3); 
+      border: 1px solid var(--border); 
+      border-radius: 12px;
+      padding: 16px 20px; 
+      font-size: 14px; 
+      line-height: 1.6;
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .result-box.red   { border-left: 4px solid var(--danger);    background: linear-gradient(90deg, rgba(239,68,68,0.1) 0%, rgba(0,0,0,0.3) 100%); }
+    .result-box.green { border-left: 4px solid var(--success);  background: linear-gradient(90deg, rgba(16,185,129,0.1) 0%, rgba(0,0,0,0.3) 100%); }
+    .result-box.amber { border-left: 4px solid var(--warning); background: linear-gradient(90deg, rgba(245,158,11,0.1) 0%, rgba(0,0,0,0.3) 100%); }
+    .result-box code  { 
+      font-family: var(--font-mono); 
+      font-size: 12px; 
+      color: #bae6fd; 
+      background: rgba(15, 23, 42, 0.8); 
+      padding: 2px 6px; 
+      border-radius: 4px; 
+      border: 1px solid rgba(255,255,255,0.05);
+    }
 
-    .fix-item { display: flex; gap: 10px; margin-bottom: 8px; font-size: 12px; }
-    .fix-num { background: var(--accent); color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .fix-item { 
+      display: flex; 
+      gap: 12px; 
+      margin-bottom: 12px; 
+      font-size: 14px; 
+      align-items: flex-start;
+    }
+    .fix-item:last-child { margin-bottom: 0; }
+    .fix-num { 
+      background: linear-gradient(135deg, var(--accent-3), #059669); 
+      color: white; 
+      border-radius: 50%; 
+      width: 24px; 
+      height: 24px; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      font-size: 12px; 
+      font-weight: 700; 
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+    }
 
     /* ── Memory stat ── */
-    .stat-row { display: flex; gap: 12px; margin-top: 12px; }
-    .stat { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; flex: 1; text-align: center; }
-    .stat-val { font-size: 18px; font-weight: 700; color: var(--green); }
-    .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .stat-row { display: flex; gap: 16px; margin-top: 24px; }
+    .stat { 
+      background: rgba(255,255,255,0.02); 
+      border: 1px solid rgba(255,255,255,0.05); 
+      border-radius: 12px; 
+      padding: 16px; 
+      flex: 1; 
+      text-align: center;
+      transition: transform 0.2s;
+    }
+    .stat:hover { transform: translateY(-2px); background: rgba(255,255,255,0.04); }
+    .stat-val { font-size: 24px; font-weight: 700; color: var(--success); text-shadow: 0 0 10px rgba(16,185,129,0.3); }
+    .stat-val.accent { color: var(--accent-1); text-shadow: 0 0 10px rgba(59,130,246,0.3); }
+    .stat-val.purple { color: var(--accent-2); text-shadow: 0 0 10px rgba(139,92,246,0.3); }
+    .stat-lbl { font-size: 11px; color: var(--text-muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
 
-    .placeholder-txt { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0; }
-    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ffffff44; border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
+    .placeholder-txt { 
+      color: var(--text-muted); 
+      font-size: 14px; 
+      text-align: center; 
+      padding: 60px 0; 
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .placeholder-icon { font-size: 32px; opacity: 0.5; }
+    
+    .spinner { 
+      display: inline-block; 
+      width: 18px; 
+      height: 18px; 
+      border: 2px solid rgba(255,255,255,0.3); 
+      border-top-color: white; 
+      border-radius: 50%; 
+      animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite; 
+      margin-right: 10px; 
+      vertical-align: middle; 
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    footer { text-align: center; padding: 20px; color: var(--muted); font-size: 12px; }
-    footer a { color: var(--accent); text-decoration: none; }
+    footer { 
+      text-align: center; 
+      padding: 30px; 
+      color: var(--text-muted); 
+      font-size: 13px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      margin-top: 40px;
+    }
+    footer a { 
+      color: var(--accent-1); 
+      text-decoration: none; 
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+    footer a:hover { color: var(--accent-2); }
   </style>
 </head>
 <body>
 
 <header>
   <div class="logo">
-    <span class="logo-icon">🔍</span>
+    <span class="logo-icon">✧</span>
     <div>
       <div class="logo-text">LogLens AI</div>
-      <div class="logo-sub">Custom DeepSeek · Sliding Window Attention</div>
+      <div class="logo-sub">Sliding Window Log Analysis</div>
     </div>
   </div>
   <div class="badges">
-    <span class="badge badge-blue">Window: 20 lines</span>
-    <span class="badge badge-green">Memory: 61 MB fixed</span>
-    <span class="badge badge-purple">O(W) not O(n²)</span>
-    <span class="badge badge-blue">10× cheaper than GPT-4</span>
+    <span class="badge badge-blue">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      Window: 20 lines
+    </span>
+    <span class="badge badge-green">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+      Memory: 61 MB fixed
+    </span>
+    <span class="badge badge-purple">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+      O(W) not O(n²)
+    </span>
   </div>
 </header>
 
 <main>
   <!-- LEFT: Input -->
   <div>
-    <div class="panel">
+    <div class="panel glass">
       <div class="panel-header">
-        <span>📋</span><span class="panel-title">Log Input</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        <span class="panel-title">System Logs</span>
       </div>
       <div class="panel-body">
         <textarea id="logInput" placeholder="Paste your log lines here…
@@ -170,41 +460,70 @@ Example:
 2024-01-15 01:51:42 ERROR DBConnectionPool - pool EXHAUSTED [50/50]
 2024-01-15 01:51:49 ERROR PaymentProcessor - TimeoutException REQ-10209 FAILED
 2024-01-15 01:51:50 ERROR CircuitBreaker - CIRCUIT BREAKER OPEN"></textarea>
-        <input type="text" id="questionInput" value="Why did the service fail?" placeholder="Your question…" />
-        <div class="sample-btns">
-          <span style="font-size:11px;color:var(--muted);align-self:center;">Try sample:</span>
-          <button class="sample-btn" onclick="loadSample('payment')">💳 Payment Failure</button>
-          <button class="sample-btn" onclick="loadSample('k8s')">☸️ K8s OOMKilled</button>
-          <button class="sample-btn" onclick="loadSample('db')">🗄 DB Deadlock</button>
+        
+        <input type="text" id="questionInput" value="Why did the service fail?" placeholder="Ask a question about these logs…" />
+        
+        <div class="sample-container">
+          <div class="sample-label">Try a Scenario:</div>
+          <div class="sample-btns">
+            <button class="sample-btn" onclick="loadSample('payment')">💳 Payment Failure</button>
+            <button class="sample-btn" onclick="loadSample('k8s')">☸️ K8s OOMKilled</button>
+            <button class="sample-btn" onclick="loadSample('db')">🗄 DB Deadlock</button>
+          </div>
         </div>
-        <button id="analyzeBtn" onclick="runAnalysis()">🔍 Analyze with Sliding Window AI</button>
+
+        <button id="analyzeBtn" onclick="runAnalysis()">
+          <span>Analyze with Sliding Window AI</span>
+        </button>
       </div>
     </div>
 
     <!-- Memory stats -->
-    <div class="stat-row" style="margin-top:16px;">
-      <div class="stat"><div class="stat-val">61 MB</div><div class="stat-lbl">Model memory (fixed)</div></div>
-      <div class="stat"><div class="stat-val" id="statWindows">—</div><div class="stat-lbl">Windows scanned</div></div>
-      <div class="stat"><div class="stat-val" id="statScore">—</div><div class="stat-lbl">Anomaly score</div></div>
+    <div class="stat-row">
+      <div class="stat glass">
+        <div class="stat-val">61 MB</div>
+        <div class="stat-lbl">Peak Memory Usage</div>
+      </div>
+      <div class="stat glass">
+        <div class="stat-val accent" id="statWindows">—</div>
+        <div class="stat-lbl">Windows Scanned</div>
+      </div>
+      <div class="stat glass">
+        <div class="stat-val purple" id="statScore">—</div>
+        <div class="stat-lbl">Max Anomaly Score</div>
+      </div>
     </div>
   </div>
 
   <!-- RIGHT: Results -->
-  <div class="panel">
+  <div class="panel glass">
     <div class="panel-header">
-      <span>🧠</span><span class="panel-title">AI Analysis</span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+      <span class="panel-title">AI Analysis & Resolution</span>
     </div>
     <div class="panel-body">
-      <div id="scanBar"></div>
-      <div id="scanViz"><div class="placeholder-txt">Paste a log and click Analyze</div></div>
-      <div id="results"><div class="placeholder-txt">Results will appear here</div></div>
+      <div class="scan-progress-container">
+        <div id="scanBar"></div>
+      </div>
+      <div id="scanViz">
+        <div class="placeholder-txt">
+          <div class="placeholder-icon">👀</div>
+          Paste a log and click Analyze to view the scanning process.
+        </div>
+      </div>
+      <div id="results">
+        <div class="placeholder-txt" style="padding-top:20px;">
+          <div class="placeholder-icon">✨</div>
+          Root cause and resolution steps will appear here.
+        </div>
+      </div>
     </div>
   </div>
 </main>
 
 <footer>
-  Built with ❤️ · Model: <a href="https://huggingface.co/ShivanshiNigam/loglens-mini-deepseek" target="_blank">ShivanshiNigam/loglens-mini-deepseek</a>
-  · <a href="https://github.com/shivanshinigam/DeepseekLogLens" target="_blank">GitHub</a>
+  Designed with ✦ · Powered by <a href="https://huggingface.co/ShivanshiNigam/loglens-mini-deepseek" target="_blank">ShivanshiNigam/loglens-mini-deepseek</a>
+  · <a href="https://github.com/shivanshinigam/DeepseekLogLens" target="_blank">GitHub Repository</a>
 </footer>
 
 <script>
@@ -290,7 +609,7 @@ async function runAnalysis() {
 
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Scanning windows…';
+  btn.innerHTML = '<span class="spinner"></span><span>Scanning windows…</span>';
 
   const lines = logText.split('\n').filter(l => l.trim());
   const W     = 20;
@@ -310,7 +629,7 @@ async function runAnalysis() {
     const row = document.createElement('div');
     row.className = 'scan-line-row';
     row.id = `lr-${i}`;
-    row.innerHTML = `<span class="line-no">${i+1}</span><span class="line-txt ${cls}">${line.substring(0,90).replace(/</g,'&lt;')}</span>`;
+    row.innerHTML = `<span class="line-no">${String(i+1).padStart(2,'0')}</span><span class="line-txt ${cls}">${line.substring(0,90).replace(/</g,'&lt;')}</span>`;
     vizEl.appendChild(row);
   });
 
@@ -330,12 +649,12 @@ async function runAnalysis() {
       if (row) row.classList.add(score > 5 ? 'anomaly' : 'window');
     }
     barEl.style.width = `${Math.round((start / total) * 100)}%`;
-    await sleep(60);
+    await sleep(70); // Slightly slower for better visual effect
   }
 
   barEl.style.width = '100%';
   btn.disabled = false;
-  btn.innerHTML = '🔍 Analyze with Sliding Window AI';
+  btn.innerHTML = '<span>Analyze with Sliding Window AI</span>';
 
   // Highlight final best window
   document.querySelectorAll('.scan-line-row').forEach(r => r.classList.remove('window','anomaly'));
@@ -350,17 +669,36 @@ async function runAnalysis() {
   }
 
   // Stats
-  document.getElementById('statWindows').textContent = scanResults.length;
-  document.getElementById('statScore').textContent = bestScore || 0;
+  // Animate numbers
+  animateValue("statWindows", 0, scanResults.length, 500);
+  animateValue("statScore", 0, bestScore || 0, 500);
 
   // Render results
   renderResults(bestWindow, bestScore, lines, question, scanResults);
 }
 
+function animateValue(id, start, end, duration) {
+  if (start === end) {
+    document.getElementById(id).textContent = end;
+    return;
+  }
+  const obj = document.getElementById(id);
+  let startTimestamp = null;
+  const step = (timestamp) => {
+    if (!startTimestamp) startTimestamp = timestamp;
+    const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+    obj.innerHTML = Math.floor(progress * (end - start) + start);
+    if (progress < 1) {
+      window.requestAnimationFrame(step);
+    }
+  };
+  window.requestAnimationFrame(step);
+}
+
 function renderResults(bw, score, allLines, question, scanResults) {
   const el = document.getElementById('results');
   if (!bw || score === 0) {
-    el.innerHTML = `<div class="result-box green">✅ No anomalies detected in these logs.</div>`;
+    el.innerHTML = `<div class="result-box green" style="margin-top:20px;">✅ No anomalies detected in these logs.</div>`;
     return;
   }
 
@@ -388,27 +726,32 @@ function renderResults(bw, score, allLines, question, scanResults) {
 
   el.innerHTML = `
     <div class="result-section">
-      <div class="result-label">🔴 Incident Status</div>
-      <div class="result-box red"><strong>Root Cause Found — Lines ${bw.start+1}–${bw.end}</strong><br>
-      <code>${(rcLine || bw.lines[0]).substring(0,120)}</code></div>
+      <div class="result-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        Root Cause Found
+      </div>
+      <div class="result-box red"><strong>Anomaly Window: Lines ${bw.start+1}–${bw.end}</strong><br>
+      <code style="display:inline-block; margin-top:8px;">${(rcLine || bw.lines[0]).substring(0,120)}</code></div>
     </div>
 
     <div class="result-section">
-      <div class="result-label">⚠️ Symptoms</div>
+      <div class="result-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        Propagated Symptoms
+      </div>
       <div class="result-box amber">
-        ${symptoms.length ? symptoms.map(s => `• <code>${s}</code>`).join('<br>') : '(no downstream symptoms)'}
+        ${symptoms.length ? symptoms.map(s => `<div style="margin-bottom:4px;">• <code>${s}</code></div>`).join('') : '(no downstream symptoms)'}
       </div>
     </div>
 
     <div class="result-section">
-      <div class="result-label">✅ Recommended Fix</div>
-      <div class="result-box green">
-        ${fixItems.map((f,i) => `<div class="fix-item"><span class="fix-num">${i+1}</span><span>${f}</span></div>`).join('')}
+      <div class="result-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        Recommended AI Resolution
       </div>
-    </div>
-
-    <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;">
-      Scanned ${scanResults.length} windows of 20 lines · Memory: 61 MB / 500 MB budget · O(W) not O(n²)
+      <div class="result-box green">
+        ${fixItems.map((f,i) => `<div class="fix-item"><div class="fix-num">${i+1}</div><div>${f}</div></div>`).join('')}
+      </div>
     </div>
   `;
 }
