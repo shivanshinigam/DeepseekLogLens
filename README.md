@@ -9,6 +9,10 @@
 
 ![LogLens AI — Live Demo on HuggingFace Space](docs/space_live_demo.png)
 
+> [!WARNING]
+> **Proof of Concept (PoC) Disclaimer**  
+> This project proves the *architecture* and *memory math* of Sliding Window Attention. The custom 16M parameter model was trained on a small synthetic dataset of log files to prove the plumbing (RAG pipeline, vLLM deployment). **It is NOT a general-purpose AI like ChatGPT.** To get true natural language generation in production, this architectural concept must be injected into a large pre-trained model (like Llama-3 8B) rather than using our tiny custom-built weights.
+
 
 ---
 
