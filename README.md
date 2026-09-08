@@ -48,6 +48,10 @@ loglens-ai-demo/
 │   ├── analyze.py                  ← CLI windowed scanner
 │   └── test_all_logs.py            ← Phase 1 verification (4 systems, all pass)
 │
+├── 🧠 RAG Pipeline (Vector DB + Query)
+│   ├── ingest_logs.py              ← Embed log files into ChromaDB vector store
+│   └── rag_query.py                ← Query logs via ChromaDB + vLLM endpoint
+│
 ├── 🌐 Demo Frontend
 │   ├── index.html                  ← Local demo (run with server.py)
 │   ├── server.py                   ← FastAPI backend with windowed analysis
