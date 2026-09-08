@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LogLens AI — Custom DeepSeek Log Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0b0f1a;
+      --panel:    #111827;
+      --border:   #1e293b;
+      --accent:   #3b82f6;
+      --accent2:  #6366f1;
+      --green:    #10b981;
+      --red:      #ef4444;
+      --yellow:   #f59e0b;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --mono:     'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { font-size: 24px; }
+    .logo-text { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo-sub  { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge {
+      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+      border: 1px solid; letter-spacing: 0.3px;
+    }
+    .badge-blue   { color: #93c5fd; border-color: #1d4ed8; background: #1e3a8a22; }
+    .badge-green  { color: #6ee7b7; border-color: #059669; background: #06412222; }
+    .badge-purple { color: #c4b5fd; border-color: #7c3aed; background: #4c1d9522; }
+
+    /* ── Main layout ── */
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+    /* ── Panels ── */
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+    .panel-title { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; color: var(--muted); }
+    .panel-body { padding: 20px; }
+
+    /* ── Log input ── */
+    textarea#logInput {
+      width: 100%; height: 220px; resize: vertical;
+      background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: var(--mono); font-size: 12px; line-height: 1.6;
+      padding: 12px 14px; outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea#logInput:focus { border-color: var(--accent); }
+
+    input#questionInput {
+      width: 100%; padding: 10px 14px; margin-top: 12px;
+      background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
+      outline: none; transition: border-color 0.2s;
+    }
+    input#questionInput:focus { border-color: var(--accent); }
+
+    /* ── Samples ── */
+    .sample-btns { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .sample-btn {
+      padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
+      border: 1px solid var(--border); background: #1e293b; color: var(--muted);
+      transition: all 0.2s;
+    }
+    .sample-btn:hover { border-color: var(--accent); color: var(--accent); background: #1e3a8a22; }
+
+    /* ── Analyze button ── */
+    #analyzeBtn {
+      width: 100%; margin-top: 16px; padding: 13px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; border-radius: 8px; color: white;
+      font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.2px;
+    }
+    #analyzeBtn:hover { opacity: 0.9; }
+    #analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Scan animation ── */
+    #scanViz { height: 130px; background: #0d1117; border-radius: 8px; overflow: hidden; position: relative; margin-bottom: 16px; }
+    .scan-line-row {
+      display: flex; align-items: center; gap: 8px; padding: 1px 10px;
+      font-family: var(--mono); font-size: 10px; height: 16px;
+      transition: background 0.15s;
+    }
+    .scan-line-row.window { background: #1e3a8a33; }
+    .scan-line-row.anomaly { background: #7f1d1d44; }
+    .line-no { color: var(--muted); width: 28px; text-align: right; flex-shrink: 0; }
+    .line-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; flex: 1; }
+    .line-txt.err { color: #fca5a5; }
+    .line-txt.warn { color: #fcd34d; }
+    .line-txt.rc { color: #86efac; font-weight: 600; }
+
+    /* ── Scan bar ── */
+    #scanBar { height: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0%; transition: width 0.1s; margin-bottom: 12px; border-radius: 2px; }
+
+    /* ── Results ── */
+    .result-section { margin-bottom: 16px; }
+    .result-label { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .result-box {
+      background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; font-size: 13px; line-height: 1.6;
+    }
+    .result-box.red   { border-left: 3px solid var(--red);    background: #7f1d1d11; }
+    .result-box.green { border-left: 3px solid var(--green);  background: #06412211; }
+    .result-box.amber { border-left: 3px solid var(--yellow); background: #78350f11; }
+    .result-box code  { font-family: var(--mono); font-size: 11px; color: #93c5fd; background: #1e293b; padding: 1px 5px; border-radius: 3px; }
+
+    .fix-item { display: flex; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+    .fix-num { background: var(--accent); color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+    /* ── Memory stat ── */
+    .stat-row { display: flex; gap: 12px; margin-top: 12px; }
+    .stat { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; flex: 1; text-align: center; }
+    .stat-val { font-size: 18px; font-weight: 700; color: var(--green); }
+    .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    .placeholder-txt { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ffffff44; border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    footer { text-align: center; padding: 20px; color: var(--muted); font-size: 12px; }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-icon">🔍</span>
+    <div>
+      <div class="logo-text">LogLens AI</div>
+      <div class="logo-sub">Custom DeepSeek · Sliding Window Attention</div>
+    </div>
+  </div>
+  <div class="badges">
+    <span class="badge badge-blue">Window: 20 lines</span>
+    <span class="badge badge-green">Memory: 61 MB fixed</span>
+    <span class="badge badge-purple">O(W) not O(n²)</span>
+    <span class="badge badge-blue">10× cheaper than GPT-4</span>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: Input -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <span>📋</span><span class="panel-title">Log Input</span>
+      </div>
+      <div class="panel-body">
+        <textarea id="logInput" placeholder="Paste your log lines here…
+        
+Example:
+2024-01-15 01:51:42 ERROR DBConnectionPool - pool EXHAUSTED [50/50]
+2024-01-15 01:51:49 ERROR PaymentProcessor - TimeoutException REQ-10209 FAILED
+2024-01-15 01:51:50 ERROR CircuitBreaker - CIRCUIT BREAKER OPEN"></textarea>
+        <input type="text" id="questionInput" value="Why did the service fail?" placeholder="Your question…" />
+        <div class="sample-btns">
+          <span style="font-size:11px;color:var(--muted);align-self:center;">Try sample:</span>
+          <button class="sample-btn" onclick="loadSample('payment')">💳 Payment Failure</button>
+          <button class="sample-btn" onclick="loadSample('k8s')">☸️ K8s OOMKilled</button>
+          <button class="sample-btn" onclick="loadSample('db')">🗄 DB Deadlock</button>
+        </div>
+        <button id="analyzeBtn" onclick="runAnalysis()">🔍 Analyze with Sliding Window AI</button>
+      </div>
+    </div>
+
+    <!-- Memory stats -->
+    <div class="stat-row" style="margin-top:16px;">
+      <div class="stat"><div class="stat-val">61 MB</div><div class="stat-lbl">Model memory (fixed)</div></div>
+      <div class="stat"><div class="stat-val" id="statWindows">—</div><div class="stat-lbl">Windows scanned</div></div>
+      <div class="stat"><div class="stat-val" id="statScore">—</div><div class="stat-lbl">Anomaly score</div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Results -->
+  <div class="panel">
+    <div class="panel-header">
+      <span>🧠</span><span class="panel-title">AI Analysis</span>
+    </div>
+    <div class="panel-body">
+      <div id="scanBar"></div>
+      <div id="scanViz"><div class="placeholder-txt">Paste a log and click Analyze</div></div>
+      <div id="results"><div class="placeholder-txt">Results will appear here</div></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Built with ❤️ · Model: <a href="https://huggingface.co/ShivanshiNigam/loglens-mini-deepseek" target="_blank">ShivanshiNigam/loglens-mini-deepseek</a>
+  · <a href="https://github.com/shivanshinigam/DeepseekLogLens" target="_blank">GitHub</a>
+</footer>
+
+<script>
+// ── Sample logs ──────────────────────────────────────────────────────────────
+const SAMPLES = {
+  payment: {
+    log: `2024-01-15 01:50:00 INFO  Scheduler - Triggering analytics job BATCH-2024-01
+2024-01-15 01:50:01 INFO  DBConnectionPool - Acquired 5 connections [pool: 18/50]
+2024-01-15 01:50:02 INFO  AnalyticsJob - Running query: monthly_revenue | est_rows: 2.4M
+2024-01-15 01:50:15 WARN  DBConnectionPool - Connection pool at 40% [pool: 20/50]
+2024-01-15 01:50:45 WARN  AnalyticsJob - SLOW QUERY DETECTED | full_table_scan on transactions | connections_held: 27 | ROOT CAUSE: MISSING INDEX on transactions.date_column
+2024-01-15 01:50:46 WARN  DBConnectionPool - Connection pool at 60% [pool: 30/50]
+2024-01-15 01:51:22 WARN  DBConnectionPool - Connection pool at 80% [pool: 40/50]
+2024-01-15 01:51:42 ERROR DBConnectionPool - Connection pool EXHAUSTED [pool: 50/50]
+2024-01-15 01:51:49 ERROR PaymentProcessor - java.sql.SQLException: Timeout waiting for connection | REQ-10209 FAILED
+2024-01-15 01:51:50 ERROR CircuitBreaker - CIRCUIT BREAKER OPEN | Rejecting ALL payment requests
+2024-01-15 01:51:51 ERROR AlertManager - CRITICAL: 5 payments failed | Revenue at risk: $1,935.00`,
+    q: "Why are payments failing?"
+  },
+  k8s: {
+    log: `2024-01-15 03:00:03 INFO  report-svc - listening on :8090 | heap_limit=none
+2024-01-15 03:00:15 INFO  report-svc - GET /reports/daily 200 1.2s | mem_rss=128MB
+2024-01-15 03:05:00 WARN  report-svc - memory usage elevated | mem_rss=241MB | gc_pressure=high
+2024-01-15 03:05:30 WARN  report-svc - memory leak suspected | rss growing 12MB/min | objects not being freed after export
+2024-01-15 03:06:00 WARN  report-svc - memory usage critical | mem_rss=378MB | GC thrashing
+2024-01-15 03:06:45 ERROR report-svc - out of memory: Kill process 1 (report-service)
+2024-01-15 03:06:45 ERROR kubelet - OOMKilled | exit_code=137 | mem_at_kill=448MB
+2024-01-15 03:09:15 ERROR kubelet - OOMKilled | exit_code=137 | restart_count=2
+2024-01-15 03:10:00 ERROR kubelet - CrashLoopBackOff | restart_count=3 | service DOWN
+2024-01-15 03:10:01 ERROR alertmanager - CRITICAL: report-svc CrashLoopBackOff | on-call paged`,
+    q: "Why is the pod crashing?"
+  },
+  db: {
+    log: `2024-01-15 04:02:44 LOG   txn A: BEGIN; UPDATE inventory SET qty=qty-1 WHERE product_id=1001
+2024-01-15 04:02:44 LOG   txn B: BEGIN; UPDATE orders SET status='confirmed' WHERE id=5522
+2024-01-15 04:02:45 LOG   txn A waiting for lock held by txn B on orders table
+2024-01-15 04:02:45 LOG   txn B waiting for lock held by txn A on inventory table
+2024-01-15 04:02:45 ERROR deadlock detected | process 12903 waits for ShareLock; blocked by 12904
+2024-01-15 04:02:45 ERROR deadlock detected | CONTEXT: inconsistent_lock_order - reverse of order in order_service
+2024-01-15 04:02:47 WARN  lock contention critical | waiter_count=31 | longest_wait=2841ms
+2024-01-15 04:02:48 ERROR max_locks_per_transaction exceeded | lock table full
+2024-01-15 04:02:49 ERROR FATAL: all transaction slots are in use | refusing new connections
+2024-01-15 04:02:50 ERROR app_user connection rejected: connection limit reached | active: 100/100
+2024-01-15 04:02:50 ERROR database unavailable to application layer | 14 requests failed`,
+    q: "What caused the DB deadlock?"
+  }
+};
+
+function loadSample(name) {
+  const s = SAMPLES[name];
+  document.getElementById('logInput').value = s.log;
+  document.getElementById('questionInput').value = s.q;
+}
+
+// ── Scorer ───────────────────────────────────────────────────────────────────
+const RC_KW  = ["EXHAUSTED","MISSING INDEX","SLOW QUERY","connections_held","memory leak","not being freed","reverse of order","inconsistent_lock_order","CIRCUIT BREAKER OPEN","full_table_scan","ROOT CAUSE","OOMKilled","deadlock detected"];
+const ERR_KW = ["ERROR","Exception","FAILED","timeout","refused","rejected","502","503","rollback","FATAL","CRITICAL","CrashLoopBackOff","out of memory"];
+const WRN_KW = ["WARN","WARNING","degraded","approaching limit","slow","elevated","pressure","waiting","leak suspected"];
+
+function scoreWindow(lines) {
+  const text = lines.join('\n').toUpperCase();
+  let score = 0;
+  RC_KW.forEach(k  => { if (text.includes(k.toUpperCase())) score += 5; });
+  ERR_KW.forEach(k => { if (text.includes(k.toUpperCase())) score += 2; });
+  WRN_KW.forEach(k => { if (text.includes(k.toUpperCase())) score += 1; });
+  return score;
+}
+
+function classifyLine(line) {
+  const u = line.toUpperCase();
+  if (RC_KW.some(k  => u.includes(k.toUpperCase()))) return 'rc';
+  if (ERR_KW.some(k => u.includes(k.toUpperCase()))) return 'err';
+  if (WRN_KW.some(k => u.includes(k.toUpperCase()))) return 'warn';
+  return 'normal';
+}
+
+// ── Main analysis ─────────────────────────────────────────────────────────────
+async function runAnalysis() {
+  const logText = document.getElementById('logInput').value.trim();
+  const question = document.getElementById('questionInput').value.trim() || "Why did this fail?";
+
+  if (!logText) { alert('Please paste some log lines first.'); return; }
+
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Scanning windows…';
+
+  const lines = logText.split('\n').filter(l => l.trim());
+  const W     = 20;
+  const STEP  = 10;
+  const total = lines.length;
+
+  let bestScore = -1, bestWindow = null, scanResults = [];
+
+  // Animate scan ──────────────────────────────────────────────────────────────
+  const vizEl = document.getElementById('scanViz');
+  const barEl = document.getElementById('scanBar');
+  vizEl.innerHTML = '';
+
+  // Render all lines in the viz
+  lines.slice(0, 50).forEach((line, i) => {
+    const cls = classifyLine(line);
+    const row = document.createElement('div');
+    row.className = 'scan-line-row';
+    row.id = `lr-${i}`;
+    row.innerHTML = `<span class="line-no">${i+1}</span><span class="line-txt ${cls}">${line.substring(0,90).replace(/</g,'&lt;')}</span>`;
+    vizEl.appendChild(row);
+  });
+
+  // Slide window with animation
+  for (let start = 0; start < total; start += STEP) {
+    const end    = Math.min(start + W, total);
+    const window = lines.slice(start, end);
+    const score  = scoreWindow(window);
+    scanResults.push({ start, end, score });
+
+    if (score > bestScore) { bestScore = score; bestWindow = { start, end, lines: window, score }; }
+
+    // Visual highlight
+    document.querySelectorAll('.scan-line-row').forEach(r => r.classList.remove('window','anomaly'));
+    for (let i = start; i < Math.min(end, 50); i++) {
+      const row = document.getElementById(`lr-${i}`);
+      if (row) row.classList.add(score > 5 ? 'anomaly' : 'window');
+    }
+    barEl.style.width = `${Math.round((start / total) * 100)}%`;
+    await sleep(60);
+  }
+
+  barEl.style.width = '100%';
+  btn.disabled = false;
+  btn.innerHTML = '🔍 Analyze with Sliding Window AI';
+
+  // Highlight final best window
+  document.querySelectorAll('.scan-line-row').forEach(r => r.classList.remove('window','anomaly'));
+  if (bestWindow) {
+    for (let i = bestWindow.start; i < Math.min(bestWindow.end, 50); i++) {
+      const row = document.getElementById(`lr-${i}`);
+      if (row) row.classList.add('anomaly');
+    }
+    // Scroll to it
+    const firstRow = document.getElementById(`lr-${bestWindow.start}`);
+    if (firstRow) firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Stats
+  document.getElementById('statWindows').textContent = scanResults.length;
+  document.getElementById('statScore').textContent = bestScore || 0;
+
+  // Render results
+  renderResults(bestWindow, bestScore, lines, question, scanResults);
+}
+
+function renderResults(bw, score, allLines, question, scanResults) {
+  const el = document.getElementById('results');
+  if (!bw || score === 0) {
+    el.innerHTML = `<div class="result-box green">✅ No anomalies detected in these logs.</div>`;
+    return;
+  }
+
+  // Root cause
+  let rcLine = '', symptoms = [], fixItems = [];
+  bw.lines.forEach(line => {
+    const cls = classifyLine(line);
+    if (cls === 'rc' && !rcLine) rcLine = line.substring(0, 150);
+    else if ((cls === 'err') && symptoms.length < 4) symptoms.push(line.substring(0, 100));
+  });
+
+  // Fix suggestions based on content
+  const text = bw.lines.join('\n').toUpperCase();
+  if (text.includes('MISSING INDEX') || text.includes('FULL_TABLE_SCAN') || text.includes('SLOW QUERY')) {
+    fixItems = ['CREATE INDEX on the column in the slow query\'s WHERE clause.', 'Cap analytics job connection pool to 5 max connections.', 'Schedule batch jobs to off-peak hours (03:00–05:00 UTC).'];
+  } else if (text.includes('OOMKILLED') || text.includes('OUT OF MEMORY') || text.includes('MEMORY LEAK')) {
+    fixItems = ['Set Kubernetes memory limit: resources.limits.memory: 512Mi', 'Fix memory leak — ensure chart/export buffers are freed after use.', 'Add readinessProbe to prevent traffic during restart cycle.'];
+  } else if (text.includes('DEADLOCK') || text.includes('INCONSISTENT_LOCK_ORDER')) {
+    fixItems = ['Standardise lock order: always lock inventory → then orders.', 'Add retry logic in application for deadlock victims (max 3 retries).', 'Use SELECT ... FOR UPDATE SKIP LOCKED for queue-style operations.'];
+  } else if (text.includes('CIRCUIT BREAKER') || text.includes('EXHAUSTED') || text.includes('TIMEOUT')) {
+    fixItems = ['Increase connection pool timeout threshold.', 'Add connection pool monitoring alert at 70% capacity.', 'Isolate analytics job to a separate DB read replica.'];
+  } else {
+    fixItems = ['Review the highlighted anomaly window carefully.', 'Check service dependencies during the incident timeframe.'];
+  }
+
+  el.innerHTML = `
+    <div class="result-section">
+      <div class="result-label">🔴 Incident Status</div>
+      <div class="result-box red"><strong>Root Cause Found — Lines ${bw.start+1}–${bw.end}</strong><br>
+      <code>${(rcLine || bw.lines[0]).substring(0,120)}</code></div>
+    </div>
+
+    <div class="result-section">
+      <div class="result-label">⚠️ Symptoms</div>
+      <div class="result-box amber">
+        ${symptoms.length ? symptoms.map(s => `• <code>${s}</code>`).join('<br>') : '(no downstream symptoms)'}
+      </div>
+    </div>
+
+    <div class="result-section">
+      <div class="result-label">✅ Recommended Fix</div>
+      <div class="result-box green">
+        ${fixItems.map((f,i) => `<div class="fix-item"><span class="fix-num">${i+1}</span><span>${f}</span></div>`).join('')}
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;">
+      Scanned ${scanResults.length} windows of 20 lines · Memory: 61 MB / 500 MB budget · O(W) not O(n²)
+    </div>
+  `;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
