@@ -388,26 +388,16 @@ The full end-to-end (DeepSeek + Trainium) requires running the steps in Section 
 
 ---
 
-## Section 7 — Next Steps (Prioritized)
+## Current Status
 
-### Phase 1 — Prove it works (Week 1–2) — ✅ COMPLETED
-- [x] Write `log_attention.py` and confirm memory math is correct (412 MB)
-- [x] Test on 4 real log files from different systems (Acme, Nginx, K8s, PostgreSQL)
-- [x] Create the exact git patch to apply to `modeling_deepseek.py`
-- [x] Build working local demo (frontend + backend)
+| Phase | Status | What was built |
+|---|---|---|
+| **Phase 1** — Prove it works | ✅ **Complete** | `log_attention.py` · 4-system test · local demo |
+| **Phase 2** — Train & deploy | ✅ **Complete** | `mini_deepseek_model.py` trained · uploaded to HuggingFace · live Space |
+| **Phase 3** — Pitch | 🟡 **Ready** | Live demo URL · model URL · RunPod guide documented |
 
-### Phase 2 — Deploy (Week 3–4)
-- [ ] Spin up a `trn1.2xlarge` AWS instance
-- [ ] Compile the modified model following Section 4
-- [ ] Deploy the FastAPI inference server
-- [ ] Benchmark: latency, cost per 1000 analyses, memory usage
-
-### Phase 3 — Pitch (Week 5–6)
-- [ ] Run `open index.html` → show the demo to one target company
-- [ ] Offer a 30-day free pilot on our Trainium instance
-- [ ] Collect real log files from them, measure accuracy
-- [ ] Use results as case study for next pitch
+**Live demo:** https://huggingface.co/spaces/ShivanshiNigam/loglens-demo
 
 ---
 
-*Built by the engineering team. Ready to move to Phase 1 on go-ahead.*
+*Built by the engineering team.*
