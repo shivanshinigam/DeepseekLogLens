@@ -57,7 +57,6 @@ loglens-ai-demo/
 ├── 📚 Documentation
 │   ├── README.md                   ← This file
 │   ├── docs/deepseek_log_analysis_plan.md  ← Full technical plan
-│   ├── docs/summary_for_sir.md             ← 1-page executive summary
 │   └── docs/runpod_deployment.md           ← RunPod vLLM deployment guide
 │
 └── logs/
