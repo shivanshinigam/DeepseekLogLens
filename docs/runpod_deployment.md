@@ -18,10 +18,10 @@ huggingface-cli login   # paste your Write token from https://hf.co/settings/tok
 python3 train_mini_deepseek.py --epochs 5 --device cuda
 
 # 3. Verify and upload
-python3 save_and_upload.py --repo-id shivanshinigam/loglens-mini-deepseek
+python3 save_and_upload.py --repo-id ShivanshiNigam/loglens-mini-deepseek
 ```
 
-Your model will be live at: `https://huggingface.co/shivanshinigam/loglens-mini-deepseek`
+Your model will be live at: `https://huggingface.co/ShivanshiNigam/loglens-mini-deepseek`
 
 ---
 
@@ -45,7 +45,7 @@ Go to **Templates → New Template** and fill in:
 |---|---|
 | Template Name | `loglens-vllm-endpoint` |
 | Container Image | `vllm/vllm-openai:latest` |
-| Docker Command | `--model shivanshinigam/loglens-mini-deepseek --port 8000 --trust-remote-code` |
+| Docker Command | `--model ShivanshiNigam/loglens-mini-deepseek --port 8000 --trust-remote-code` |
 | Container Disk | `20 GB` |
 | Volume Disk | `20 GB` |
 | Exposed Ports | `8000 (HTTP)` |
@@ -104,7 +104,7 @@ client = OpenAI(
 )
 
 completion = client.chat.completions.create(
-    model    = "shivanshinigam/loglens-mini-deepseek",
+    model    = "ShivanshiNigam/loglens-mini-deepseek",
     messages = [{
         "role":    "user",
         "content": "Analyze this log and tell me the root cause:\n\nERROR: DB connection pool exhausted [pool: 50/50] | 27 connections held by BATCH-2024-01\nERROR: TimeoutException waiting for connection | REQ-10209"
@@ -119,7 +119,7 @@ Or with raw curl:
 curl -X POST https://YOUR_RUNPOD_POD_ID-8000.proxy.runpod.net/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "shivanshinigam/loglens-mini-deepseek",
+    "model": "ShivanshiNigam/loglens-mini-deepseek",
     "messages": [{"role": "user", "content": "Why did payments fail?"}]
   }'
 ```

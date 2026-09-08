@@ -3,6 +3,9 @@
 > A modified DeepSeek with Sliding Window Attention, designed specifically for log file analysis.
 > Runs under 500 MB memory. 10× cheaper than GPT-4. Hosted on AWS Trainium.
 
+[![Model on HuggingFace](https://img.shields.io/badge/🤗_HuggingFace-ShivanshiNigam%2Floglens--mini--deepseek-blue)](https://huggingface.co/ShivanshiNigam/loglens-mini-deepseek)
+[![GitHub](https://img.shields.io/badge/GitHub-DeepseekLogLens-black?logo=github)](https://github.com/shivanshinigam/DeepseekLogLens)
+
 ![LogLens AI Demo](docs/analysis_result.png)
 
 ---
