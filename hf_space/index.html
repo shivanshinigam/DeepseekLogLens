@@ -7,6 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- pdf.js for client-side PDF text extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
       --bg: #030712;
@@ -166,6 +168,85 @@
       border-color: var(--accent-2); 
       box-shadow: 0 0 15px rgba(139, 92, 246, 0.2);
     }
+
+    /* ── Input Tabs ── */
+    .input-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .input-tab {
+      flex: 1;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      background: rgba(255,255,255,0.02);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .input-tab.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: white;
+      border-bottom: 2px solid var(--accent-1);
+    }
+    .input-tab:hover:not(.active) {
+      background: rgba(255,255,255,0.05);
+      color: #e2e8f0;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Upload Zone ── */
+    .upload-zone {
+      border: 2px dashed rgba(99, 102, 241, 0.4);
+      border-radius: 12px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: rgba(99, 102, 241, 0.04);
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent-1);
+      background: rgba(59, 130, 246, 0.1);
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
+    }
+    .upload-zone input[type='file'] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-icon { font-size: 36px; margin-bottom: 12px; }
+    .upload-title { font-size: 15px; font-weight: 600; color: #e2e8f0; margin-bottom: 6px; }
+    .upload-sub { font-size: 12px; color: var(--text-muted); }
+    .upload-filename {
+      display: none;
+      margin-top: 16px;
+      padding: 10px 16px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--success);
+      font-weight: 600;
+      align-items: center;
+      gap: 8px;
+    }
+    .upload-filename.show { display: flex; justify-content: center; }
 
     /* ── Samples ── */
     .sample-container {
@@ -454,23 +535,53 @@
         <span class="panel-title">System Logs</span>
       </div>
       <div class="panel-body">
-        <textarea id="logInput" placeholder="Paste your log lines here…
-        
-Example:
+
+        <!-- ── Tab switcher ── -->
+        <div class="input-tabs">
+          <button class="input-tab active" id="tabUpload" onclick="switchTab('upload')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            Upload File
+          </button>
+          <button class="input-tab" id="tabPaste" onclick="switchTab('paste')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            Paste Logs
+          </button>
+        </div>
+
+        <!-- ── Upload Tab ── -->
+        <div class="tab-panel active" id="panelUpload">
+          <div class="upload-zone" id="uploadZone"
+               ondragover="handleDragOver(event)"
+               ondragleave="handleDragLeave(event)"
+               ondrop="handleDrop(event)">
+            <input type="file" id="fileInput" accept=".pdf,.log,.txt,.csv" onchange="handleFileSelect(event)" />
+            <div class="upload-icon">📄</div>
+            <div class="upload-title">Drop your file here or click to browse</div>
+            <div class="upload-sub">Supports: PDF, .log, .txt, .csv</div>
+          </div>
+          <div class="upload-filename" id="uploadFilename">
+            <span>✅</span><span id="uploadFilenameText"></span>
+          </div>
+        </div>
+
+        <!-- ── Paste Tab ── -->
+        <div class="tab-panel" id="panelPaste">
+          <textarea id="logInput" placeholder="Paste your log lines here…
+
 2024-01-15 01:51:42 ERROR DBConnectionPool - pool EXHAUSTED [50/50]
 2024-01-15 01:51:49 ERROR PaymentProcessor - TimeoutException REQ-10209 FAILED
 2024-01-15 01:51:50 ERROR CircuitBreaker - CIRCUIT BREAKER OPEN"></textarea>
-        
-        <input type="text" id="questionInput" value="Why did the service fail?" placeholder="Ask a question about these logs…" />
-        
-        <div class="sample-container">
-          <div class="sample-label">Try a Scenario:</div>
-          <div class="sample-btns">
-            <button class="sample-btn" onclick="loadSample('payment')">💳 Payment Failure</button>
-            <button class="sample-btn" onclick="loadSample('k8s')">☸️ K8s OOMKilled</button>
-            <button class="sample-btn" onclick="loadSample('db')">🗄 DB Deadlock</button>
+          <div class="sample-container">
+            <div class="sample-label">Try a Scenario:</div>
+            <div class="sample-btns">
+              <button class="sample-btn" onclick="loadSample('payment')">💳 Payment Failure</button>
+              <button class="sample-btn" onclick="loadSample('k8s')">☸️ K8s OOMKilled</button>
+              <button class="sample-btn" onclick="loadSample('db')">🗄 DB Deadlock</button>
+            </div>
           </div>
         </div>
+        
+        <input type="text" id="questionInput" value="Why did the service fail?" placeholder="Ask a question about these logs…" />
 
         <button id="analyzeBtn" onclick="runAnalysis()">
           <span>Analyze with Sliding Window AI</span>
@@ -527,6 +638,81 @@ Example:
 </footer>
 
 <script>
+// ── pdf.js worker setup ──────────────────────────────────────────────────────
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+let extractedText = ''; // Holds text from uploaded file
+
+function switchTab(tab) {
+  document.getElementById('tabUpload').classList.toggle('active', tab === 'upload');
+  document.getElementById('tabPaste').classList.toggle('active', tab === 'paste');
+  document.getElementById('panelUpload').classList.toggle('active', tab === 'upload');
+  document.getElementById('panelPaste').classList.toggle('active', tab === 'paste');
+}
+
+// ── Drag & Drop handlers ──────────────────────────────────────────────────────
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.add('dragover');
+}
+function handleDragLeave(e) {
+  document.getElementById('uploadZone').classList.remove('dragover');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+}
+
+// ── File processor ────────────────────────────────────────────────────────────
+async function processFile(file) {
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span><span>Reading file…</span>';
+
+  try {
+    if (file.name.endsWith('.pdf')) {
+      extractedText = await extractPdfText(file);
+    } else {
+      // Plain text files: .log, .txt, .csv
+      extractedText = await file.text();
+    }
+
+    // Show success badge with filename
+    document.getElementById('uploadFilenameText').textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
+    document.getElementById('uploadFilename').classList.add('show');
+    document.getElementById('uploadZone').querySelector('.upload-icon').textContent = '✅';
+    document.getElementById('uploadZone').querySelector('.upload-title').textContent = 'File loaded! Click Analyze below.';
+    document.getElementById('uploadZone').querySelector('.upload-sub').textContent = `${extractedText.split('\n').length} lines extracted`;
+
+  } catch (err) {
+    alert('Error reading file: ' + err.message);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<span>Analyze with Sliding Window AI</span>';
+}
+
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    fullText += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return fullText;
+}
+
 // ── Sample logs ──────────────────────────────────────────────────────────────
 const SAMPLES = {
   payment: {
@@ -602,16 +788,26 @@ function classifyLine(line) {
 
 // ── Main analysis ─────────────────────────────────────────────────────────────
 async function runAnalysis() {
-  const logText = document.getElementById('logInput').value.trim();
+  // Pick up text from whichever tab is active
+  const isUploadTab = document.getElementById('panelUpload').classList.contains('active');
+  const logText = isUploadTab
+    ? extractedText.trim()
+    : document.getElementById('logInput').value.trim();
   const question = document.getElementById('questionInput').value.trim() || "Why did this fail?";
 
-  if (!logText) { alert('Please paste some log lines first.'); return; }
+  if (!logText) {
+    alert(isUploadTab
+      ? 'Please upload a PDF or log file first.'
+      : 'Please paste some log lines first.');
+    return;
+  }
 
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span><span>Scanning windows…</span>';
 
   const lines = logText.split('\n').filter(l => l.trim());
+
   const W     = 20;
   const STEP  = 10;
   const total = lines.length;
